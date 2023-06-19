@@ -95,7 +95,7 @@ class Pipeline:
         transformedVertices = self.camera.transformVertices(vertices, self.vTranslation, self.vRotation)
         return transformedVertices
 
-    def render(self, cameraVerts = None, diffuseTextures = None, specularTextures = None, roughnessTextures = None, renderAlbedo = False):
+    def render(self, cameraVerts = None, diffuseTextures = None, specularTextures = None, roughnessTextures = None, renderAlbedo = False, vertexBased = False):
         '''
         ray trace an image given camera vertices and corresponding textures
         :param cameraVerts: camera vertices tensor [n, verticesNumber, 3]
@@ -103,6 +103,7 @@ class Pipeline:
         :param specularTextures: specular textures tensor [n, texRes, texRes, 3]
         :param roughnessTextures: roughness textures tensor [n, texRes, texRes, 1]
         :param renderAlbedo: if True render albedo else ray trace image
+        :param vertexBased: if True we render by vertex instead of ray tracing
         :return: ray traced images [n, resX, resY, 4]
         '''
         if cameraVerts is None:
@@ -131,13 +132,15 @@ class Pipeline:
         assert(cameraVerts.shape[0] == envMaps.shape[0])
         assert (diffuseTextures.shape[0] == specularTextures.shape[0] == roughnessTextures.shape[0])
 
-        scenes = self.renderer.buildScenes(cameraVerts, self.faces32, normals, self.uvMap, diffuseTextures,
-                                           specularTextures, torch.clamp(roughnessTextures, 1e-20, 10.0), self.vFocals, envMaps)
-        if renderAlbedo:
-            images = self.renderer.renderAlbedo(scenes)
+        if vertexBased:
+            images = self.computeVertexBasedImage()
         else:
-            images = self.renderer.render(scenes)
-
+            scenes = self.renderer.buildScenes(cameraVerts, self.faces32, normals, self.uvMap, diffuseTextures,
+                                                specularTextures, torch.clamp(roughnessTextures, 1e-20, 10.0), self.vFocals, envMaps)
+            if renderAlbedo:
+                images = self.renderer.renderAlbedo(scenes)
+            else:
+                images = self.renderer.render(scenes)
         return images
 
     def landmarkLoss(self, cameraVertices, landmarks, focals, cameraCenters,  debugDir = None):
@@ -168,3 +171,42 @@ class Pipeline:
                 cv2.imwrite(debugDir + '/lp' +  str(i) +'.png', cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
 
         return loss
+    def computeVertexBasedImage(self, face_texture_diffuse, face_texture_specular, face_texture_roughness, face_norm, gamma):
+        """
+        Return:
+            face_color       -- torch.tensor, size (B, N, 3), range (0, 1.)
+
+        Parameters:
+            face_texture_diffuse     -- torch.tensor, size (B, N, 3), from texture model, range (0, 1.)
+            face_texture_specular     -- torch.tensor, size (B, N, 3), from texture model, range (0, 1.)
+            face_texture_roughness     -- torch.tensor, size (B, N, 3), from texture model, range (0, 1.)
+            face_norm        -- torch.tensor, size (B, N, 3), rotated face normal
+            gamma            -- torch.tensor, size (B, 27), SH coeffs
+        """
+        # batch_size = gamma.shape[0]
+        # v_num = face_texture.shape[1]
+        # a, c = self.SH.a, self.SH.c #seems to be a very specific function ....
+        a,c = self.sh.phi, self.sh.theta
+        # gamma = gamma.reshape([batch_size, 3, 9])
+        # gamma = gamma + self.init_lit
+        # gamma = gamma.permute(0, 2, 1)
+        Y = torch.cat([
+             a[0] * c[0] * torch.ones_like(face_norm[..., :1]).to(self.device),
+            -a[1] * c[1] * face_norm[..., 1:2],
+             a[1] * c[1] * face_norm[..., 2:],
+            -a[1] * c[1] * face_norm[..., :1],
+             a[2] * c[2] * face_norm[..., :1] * face_norm[..., 1:2],
+            -a[2] * c[2] * face_norm[..., 1:2] * face_norm[..., 2:],
+            0.5 * a[2] * c[2] / np.sqrt(3.) * (3 * face_norm[..., 2:] ** 2 - 1),
+            -a[2] * c[2] * face_norm[..., :1] * face_norm[..., 2:],
+            0.5 * a[2] * c[2] * (face_norm[..., :1] ** 2  - face_norm[..., 1:2] ** 2)
+        ], dim=-1)
+        # r = Y @ gamma[..., :1]
+        # g = Y @ gamma[..., 1:2]
+        # b = Y @ gamma[..., 2:]
+        #not sure about that one 
+        bd = face_texture_diffuse 
+        bs = face_texture_roughness * face_texture_specular
+        face_color = torch.cat(Y, dim=-1) * (face_texture_diffuse + face_texture_specular) 
+        # we need to update face_color to match Images
+        return face_color
