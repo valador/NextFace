@@ -32,7 +32,11 @@ class LandmarksDetectorFAN:
 			landmarks.append(land)
 
 		torch.set_grad_enabled(True) #it turns out that the landmark detector disables the autograd engine. this line fixes this
+ 		#UserWarning: Creating a tensor from a list of numpy.ndarrays is extremely slow. Please consider converting the list to a single numpy.ndarray with numpy.array() before converting to a tensor. 
+  		
+		# landmarks = np.array(landmarks) 
 		return torch.tensor(landmarks, device = self.device)
+ 
 	def _detect(self, image):
 		arr = self.landmarksDetector.get_landmarks_from_image(image, None)
 		if arr is None or len(arr) == 0:

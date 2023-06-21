@@ -267,7 +267,7 @@ class Optimizer:
 
             if self.config.debugFrequency > 0 and iter % self.config.debugFrequency == 0:
                 self.debugFrame(smoothedImage, inputTensor, diffuseTextures, specularTextures, self.pipeline.vRoughness, self.debugDir + 'debug1_iter' + str(iter))
-
+           
         self.plotLoss(losses, 1, self.outputDir + 'checkpoints/stage2_loss.png')
         self.saveParameters(self.outputDir + 'checkpoints/stage2_output.pickle')
 

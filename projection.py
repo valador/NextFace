@@ -9,7 +9,7 @@ def isRotationMatrix(R):
     """
     if R.ndim != 2 or R.shape[0] != R.shape[1]:
         return False
-    isIdentity = np.allclose(R.dot(R.T), np.identity(R.shape[0], np.float))
+    isIdentity = np.allclose(R.dot(R.T), np.identity(R.shape[0], float))
     isDetEqualToOne = np.allclose(np.linalg.det(R), 1)
     return isIdentity and isDetEqualToOne
 
@@ -80,8 +80,10 @@ def estimateCameraPosition(focalLength, image_center, landmarks, vertices, rotAn
                               translation[i])
         rots.append(rot)
         transs.append(trans)
-    return torch.tensor(rots, device=vertices.device, dtype=torch.float32), torch.tensor(transs, device=vertices.device,
-                                                                                         dtype=torch.float32)
+        
+    # rots = np.array(rots)
+    # transs = np.array(trans)
+    return torch.tensor(rots, device=vertices.device, dtype=torch.float32), torch.tensor(transs, device=vertices.device, dtype=torch.float32)
 
 
 def solvePnP(focalLength, imageCenter, vertices, pixels, rotAngles, translation):

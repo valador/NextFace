@@ -135,12 +135,12 @@ class Pipeline:
         if vertexBased:
             images = self.computeVertexBasedImage()
         else:
-            scenes = self.renderer.buildScenes(cameraVerts, self.faces32, normals, self.uvMap, diffuseTextures,
-                                                specularTextures, torch.clamp(roughnessTextures, 1e-20, 10.0), self.vFocals, envMaps)
+            scenes = self.renderer.buildScenes(cameraVerts, self.faces32, normals, self.uvMap, diffuseTextures, specularTextures, torch.clamp(roughnessTextures, 1e-20, 10.0), self.vFocals, envMaps)
             if renderAlbedo:
                 images = self.renderer.renderAlbedo(scenes)
             else:
                 images = self.renderer.render(scenes)
+                
         return images
 
     def landmarkLoss(self, cameraVertices, landmarks, focals, cameraCenters,  debugDir = None):
