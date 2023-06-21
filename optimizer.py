@@ -212,8 +212,6 @@ class Optimizer:
             losses.append(loss.item())
             if self.verbose:
                 print(iter, '=>', loss.item())
-            if iter % 100 :
-                self.saveOutput(self.config.rtSamples, self.outputDir + '/outputStage1', prefix='stage1_')
 
         self.plotLoss(losses, 0, self.outputDir + 'checkpoints/stage1_loss.png')
         self.saveParameters(self.outputDir + 'checkpoints/stage1_output.pickle')
@@ -269,8 +267,6 @@ class Optimizer:
 
             if self.config.debugFrequency > 0 and iter % self.config.debugFrequency == 0:
                 self.debugFrame(smoothedImage, inputTensor, diffuseTextures, specularTextures, self.pipeline.vRoughness, self.debugDir + 'debug1_iter' + str(iter))
-            if iter % 100:
-                self.saveOutput(self.config.rtSamples, self.outputDir + '/outputStage2', prefix='stage2_')
 
         self.plotLoss(losses, 1, self.outputDir + 'checkpoints/stage2_loss.png')
         self.saveParameters(self.outputDir + 'checkpoints/stage2_output.pickle')

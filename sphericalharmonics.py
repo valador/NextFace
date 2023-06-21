@@ -12,7 +12,9 @@ class SphericalHarmonics:
     def __init__(self, envMapResolution, device):
         self.device = device
         self.setEnvironmentMapResolution(envMapResolution)
-
+        # DANIEL a and c are defined in the problem by itself, this value are not necessarily true
+        self.a = [np.pi, 2 * np.pi / np.sqrt(3.), 2 * np.pi / np.sqrt(8.)]
+        self.c = [1/np.sqrt(4 * np.pi), np.sqrt(3.) / np.sqrt(4 * np.pi), 3 * np.sqrt(5.) / np.sqrt(12 * np.pi)]
     def setEnvironmentMapResolution(self, res):
         res = (res, res)
         self.resolution = res

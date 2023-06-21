@@ -2,9 +2,9 @@ from sphericalharmonics import SphericalHarmonics
 from morphablemodel import MorphableModel
 from renderer import Renderer
 from camera import Camera
+from customRenderer import *
+from customRenderer.nvdiffrast import NvidiffrastRenderer
 from utils import *
-from utils.nvdiffrast import NvidiffrastRenderer
-
 class Pipeline:
 
     def __init__(self,  config):
@@ -149,6 +149,7 @@ class Pipeline:
             # gamma ?
             # do we take in account rotation when computing normals ?
             # coeff -> face shape -> face shape rotated -> face vertex (based on camera) -> normals (based on face vertex) -> rotated normals *
+            gamma =
             vertex_colors = self.computeVertexColor(diffuseTextures, specularTextures, roughnessTextures, normals)
             # face_shape -> self.computeShape() -> vertices (if no camera) or cameraVerts (if  camera)
             images = self.computeVertexBasedImage(cameraVerts, vertex_colors)
@@ -204,13 +205,12 @@ class Pipeline:
             normals        -- torch.tensor, size (B, N, 3), rotated face normal
             gamma            -- torch.tensor, size (B, 27), SH coeffs
         """
-        # batch_size = gamma.shape[0]
+        batch_size = gamma.shape[0]
         # v_num = face_texture.shape[1]
-        # a, c = self.SH.a, self.SH.c #seems to be a very specific function ....
-        a,c = self.sh.phi, self.sh.theta
-        # gamma = gamma.reshape([batch_size, 3, 9])
-        # gamma = gamma + self.init_lit
-        # gamma = gamma.permute(0, 2, 1)
+        a,c = self.sh.a, self.sh.c
+        gamma = gamma.reshape([batch_size, 3, 9])
+        gamma = gamma + self.init_lit
+        gamma = gamma.permute(0, 2, 1)
         Y = torch.cat([
              a[0] * c[0] * torch.ones_like(normals[..., :1]).to(self.device),
             -a[1] * c[1] * normals[..., 1:2],
@@ -222,13 +222,14 @@ class Pipeline:
             -a[2] * c[2] * normals[..., :1] * normals[..., 2:],
             0.5 * a[2] * c[2] * (normals[..., :1] ** 2  - normals[..., 1:2] ** 2)
         ], dim=-1)
-        # r = Y @ gamma[..., :1]
-        # g = Y @ gamma[..., 1:2]
-        # b = Y @ gamma[..., 2:]
+        r = Y @ gamma[..., :1]
+        g = Y @ gamma[..., 1:2]
+        b = Y @ gamma[..., 2:]
         # WIP not sure about that one 
         # bd = face_texture_diffuse 
         # bs = face_texture_roughness * face_texture_specular
-        face_color = torch.cat(Y, dim=-1) * (diffuseTexture + specularTexture) 
+        face_color = torch.cat([r, g, b], dim=-1) * diffuseTexture  
+        # face_color = Y * diffuseTexture  
         # we need to update face_color to match Images
         return face_color
     # predict face and mask
