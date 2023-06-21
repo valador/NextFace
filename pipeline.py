@@ -3,6 +3,7 @@ from morphablemodel import MorphableModel
 from renderer import Renderer
 from camera import Camera
 from utils import *
+from utils.nvdiffrast import NvidiffrastRenderer
 
 class Pipeline:
 
@@ -35,6 +36,18 @@ class Pipeline:
         self.faces32 = self.morphableModel.faces.to(torch.int32).contiguous()
         self.shBands = config.bands
         self.sharedIdentity = False
+        #DANIEL  To Test 
+        # Define Renderer
+        # Default settings in facerecon_model.py ~ might need to update them for our specific use case
+        focal = 1015
+        center=112
+        camera_d=10
+        use_last_fc=False
+        z_near=5
+        z_far=15
+        fov = 2 * np.arctan(center / focal) * 180 / np.pi      
+        use_opengl = True   
+        self.NvidiffrastRenderer = NvidiffrastRenderer(rasterize_fov=fov, znear=z_near, zfar=z_far, rasterize_size=int(2 * center), use_opengl=use_opengl)
 
     def initSceneParameters(self, n, sharedIdentity = False):
         '''
@@ -133,7 +146,12 @@ class Pipeline:
         assert (diffuseTextures.shape[0] == specularTextures.shape[0] == roughnessTextures.shape[0])
 
         if vertexBased:
-            images = self.computeVertexBasedImage()
+            # gamma ?
+            # do we take in account rotation when computing normals ?
+            # coeff -> face shape -> face shape rotated -> face vertex (based on camera) -> normals (based on face vertex) -> rotated normals *
+            vertex_colors = self.computeVertexColor(diffuseTextures, specularTextures, roughnessTextures, normals)
+            # face_shape -> self.computeShape() -> vertices (if no camera) or cameraVerts (if  camera)
+            images = self.computeVertexBasedImage(cameraVerts, vertex_colors)
         else:
             scenes = self.renderer.buildScenes(cameraVerts, self.faces32, normals, self.uvMap, diffuseTextures, specularTextures, torch.clamp(roughnessTextures, 1e-20, 10.0), self.vFocals, envMaps)
             if renderAlbedo:
@@ -171,7 +189,10 @@ class Pipeline:
                 cv2.imwrite(debugDir + '/lp' +  str(i) +'.png', cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
 
         return loss
-    def computeVertexBasedImage(self, face_texture_diffuse, face_texture_specular, face_texture_roughness, face_norm, gamma):
+    
+    #WIP
+    # Generate colors for each vertices
+    def computeVertexColor(self, diffuseTexture, specularTexture, roughnessTexture, normals, gamma = None):
         """
         Return:
             face_color       -- torch.tensor, size (B, N, 3), range (0, 1.)
@@ -180,7 +201,7 @@ class Pipeline:
             face_texture_diffuse     -- torch.tensor, size (B, N, 3), from texture model, range (0, 1.)
             face_texture_specular     -- torch.tensor, size (B, N, 3), from texture model, range (0, 1.)
             face_texture_roughness     -- torch.tensor, size (B, N, 3), from texture model, range (0, 1.)
-            face_norm        -- torch.tensor, size (B, N, 3), rotated face normal
+            normals        -- torch.tensor, size (B, N, 3), rotated face normal
             gamma            -- torch.tensor, size (B, 27), SH coeffs
         """
         # batch_size = gamma.shape[0]
@@ -191,22 +212,89 @@ class Pipeline:
         # gamma = gamma + self.init_lit
         # gamma = gamma.permute(0, 2, 1)
         Y = torch.cat([
-             a[0] * c[0] * torch.ones_like(face_norm[..., :1]).to(self.device),
-            -a[1] * c[1] * face_norm[..., 1:2],
-             a[1] * c[1] * face_norm[..., 2:],
-            -a[1] * c[1] * face_norm[..., :1],
-             a[2] * c[2] * face_norm[..., :1] * face_norm[..., 1:2],
-            -a[2] * c[2] * face_norm[..., 1:2] * face_norm[..., 2:],
-            0.5 * a[2] * c[2] / np.sqrt(3.) * (3 * face_norm[..., 2:] ** 2 - 1),
-            -a[2] * c[2] * face_norm[..., :1] * face_norm[..., 2:],
-            0.5 * a[2] * c[2] * (face_norm[..., :1] ** 2  - face_norm[..., 1:2] ** 2)
+             a[0] * c[0] * torch.ones_like(normals[..., :1]).to(self.device),
+            -a[1] * c[1] * normals[..., 1:2],
+             a[1] * c[1] * normals[..., 2:],
+            -a[1] * c[1] * normals[..., :1],
+             a[2] * c[2] * normals[..., :1] * normals[..., 1:2],
+            -a[2] * c[2] * normals[..., 1:2] * normals[..., 2:],
+            0.5 * a[2] * c[2] / np.sqrt(3.) * (3 * normals[..., 2:] ** 2 - 1),
+            -a[2] * c[2] * normals[..., :1] * normals[..., 2:],
+            0.5 * a[2] * c[2] * (normals[..., :1] ** 2  - normals[..., 1:2] ** 2)
         ], dim=-1)
         # r = Y @ gamma[..., :1]
         # g = Y @ gamma[..., 1:2]
         # b = Y @ gamma[..., 2:]
-        #not sure about that one 
-        bd = face_texture_diffuse 
-        bs = face_texture_roughness * face_texture_specular
-        face_color = torch.cat(Y, dim=-1) * (face_texture_diffuse + face_texture_specular) 
+        # WIP not sure about that one 
+        # bd = face_texture_diffuse 
+        # bs = face_texture_roughness * face_texture_specular
+        face_color = torch.cat(Y, dim=-1) * (diffuseTexture + specularTexture) 
         # we need to update face_color to match Images
         return face_color
+    # predict face and mask
+    def computeVertexImage(self, vertices, verticesColor) : 
+        #pred mask + pred face 
+        # Renderer(vertex, face_buffer, face_color)    
+        """
+        Return:
+            predicted mask :
+            _ :
+            predicted face : 
+        Parameters:
+            predicted_vertex
+            face_buf : # vertex indices for each face. starts from 0. [F,3]         self.face_buf = model['tri'].astype(np.int64) - 1 (based on face model)
+            predicted_color : 
+        """
+       
+        return self.NvidiffrastRenderer(vertices, feat=verticesColor)
+    # draw the visuals
+    def compute_visuals(self):
+        with torch.no_grad():
+            input_img_numpy = 255. * self.input_img.detach().cpu().permute(0, 2, 3, 1).numpy()
+            output_vis = self.pred_face * self.pred_mask + (1 - self.pred_mask) * self.input_img
+            output_vis_numpy_raw = 255. * output_vis.detach().cpu().permute(0, 2, 3, 1).numpy()
+            
+            if self.gt_lm is not None:
+                gt_lm_numpy = self.gt_lm.cpu().numpy()
+                pred_lm_numpy = self.pred_lm.detach().cpu().numpy()
+                output_vis_numpy = self.draw_landmarks(output_vis_numpy_raw, gt_lm_numpy, 'b')
+                output_vis_numpy = self.draw_landmarks(output_vis_numpy, pred_lm_numpy, 'r')
+            
+                output_vis_numpy = np.concatenate((input_img_numpy, 
+                                    output_vis_numpy_raw, output_vis_numpy), axis=-2)
+            else:
+                output_vis_numpy = np.concatenate((input_img_numpy, 
+                                    output_vis_numpy_raw), axis=-2)
+
+            self.output_vis = torch.tensor(
+                    output_vis_numpy / 255., dtype=torch.float32
+                ).permute(0, 3, 1, 2).to(self.device)
+    def draw_landmarks(img, landmark, color='r', step=2):
+        """
+        Return:
+            img              -- numpy.array, (B, H, W, 3) img with landmark, RGB order, range (0, 255)
+            
+
+        Parameters:
+            img              -- numpy.array, (B, H, W, 3), RGB order, range (0, 255)
+            landmark         -- numpy.array, (B, 68, 2), y direction is opposite to v direction
+            color            -- str, 'r' or 'b' (red or blue)
+        """
+        if color =='r':
+            c = np.array([255., 0, 0])
+        else:
+            c = np.array([0, 0, 255.])
+
+        _, H, W, _ = img.shape
+        img, landmark = img.copy(), landmark.copy()
+        landmark[..., 1] = H - 1 - landmark[..., 1]
+        landmark = np.round(landmark).astype(np.int32)
+        for i in range(landmark.shape[1]):
+            x, y = landmark[:, i, 0], landmark[:, i, 1]
+            for j in range(-step, step):
+                for k in range(-step, step):
+                    u = np.clip(x + j, 0, W - 1)
+                    v = np.clip(y + k, 0, H - 1)
+                    for m in range(landmark.shape[0]):
+                        img[m, v[m], u[m]] = c
+        return img

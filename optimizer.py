@@ -212,6 +212,8 @@ class Optimizer:
             losses.append(loss.item())
             if self.verbose:
                 print(iter, '=>', loss.item())
+            if iter % 100 :
+                self.saveOutput(self.config.rtSamples, self.outputDir + '/outputStage1', prefix='stage1_')
 
         self.plotLoss(losses, 0, self.outputDir + 'checkpoints/stage1_loss.png')
         self.saveParameters(self.outputDir + 'checkpoints/stage1_output.pickle')
@@ -241,7 +243,7 @@ class Optimizer:
             diffuseTextures = self.pipeline.morphableModel.generateTextureFromAlbedo(diffAlbedo)
             specularTextures = self.pipeline.morphableModel.generateTextureFromAlbedo(specAlbedo)
 
-            images = self.pipeline.render(cameraVerts, diffuseTextures, specularTextures)
+            images = self.pipeline.render(cameraVerts, diffuseTextures, specularTextures,vertexBased=True)
             mask = images[..., 3:]
             smoothedImage = smoothImage(images[..., 0:3], self.smoothing)
             diff = mask * (smoothedImage - inputTensor).abs()
@@ -267,7 +269,9 @@ class Optimizer:
 
             if self.config.debugFrequency > 0 and iter % self.config.debugFrequency == 0:
                 self.debugFrame(smoothedImage, inputTensor, diffuseTextures, specularTextures, self.pipeline.vRoughness, self.debugDir + 'debug1_iter' + str(iter))
-           
+            if iter % 100:
+                self.saveOutput(self.config.rtSamples, self.outputDir + '/outputStage2', prefix='stage2_')
+
         self.plotLoss(losses, 1, self.outputDir + 'checkpoints/stage2_loss.png')
         self.saveParameters(self.outputDir + 'checkpoints/stage2_output.pickle')
 
@@ -308,7 +312,7 @@ class Optimizer:
             vertices, diffAlbedo, specAlbedo = self.pipeline.morphableModel.computeShapeAlbedo(self.pipeline.vShapeCoeff, self.pipeline.vExpCoeff, self.pipeline.vAlbedoCoeff)
             cameraVerts = self.pipeline.camera.transformVertices(vertices, self.pipeline.vTranslation, self.pipeline.vRotation)
 
-            images = self.pipeline.render(cameraVerts, vDiffTextures, vSpecTextures, vRoughTextures)
+            images = self.pipeline.render(cameraVerts, vDiffTextures, vSpecTextures, vRoughTextures, vertexBased=True)
             mask = images[..., 3:]
             smoothedImage = smoothImage(images[..., 0:3], self.smoothing)
             diff = mask * (smoothedImage - inputTensor).abs()
@@ -365,12 +369,12 @@ class Optimizer:
 
 
         self.pipeline.renderer.samples = samples
-        images = self.pipeline.render(None, vDiffTextures, vSpecTextures, vRoughTextures)
+        images = self.pipeline.render(None, vDiffTextures, vSpecTextures, vRoughTextures, vertexBased=True)
 
-        diffuseAlbedo = self.pipeline.render(diffuseTextures=vDiffTextures, renderAlbedo=True)
-        specularAlbedo = self.pipeline.render(diffuseTextures=vSpecTextures, renderAlbedo=True)
-        roughnessAlbedo = self.pipeline.render(diffuseTextures=vRoughTextures.repeat(1, 1, 1, 3), renderAlbedo=True)
-        illum = self.pipeline.render(diffuseTextures=torch.ones_like(vDiffTextures), specularTextures=torch.zeros_like(vDiffTextures))
+        diffuseAlbedo = self.pipeline.render(diffuseTextures=vDiffTextures, renderAlbedo=True, vertexBased=True)
+        specularAlbedo = self.pipeline.render(diffuseTextures=vSpecTextures, renderAlbedo=True, vertexBased=True)
+        roughnessAlbedo = self.pipeline.render(diffuseTextures=vRoughTextures.repeat(1, 1, 1, 3), renderAlbedo=True, vertexBased=True)
+        illum = self.pipeline.render(diffuseTextures=torch.ones_like(vDiffTextures), specularTextures=torch.zeros_like(vDiffTextures),vertexBased=True)
 
         for i in range(diffuseAlbedo.shape[0]):
             saveObj(outputDir + prefix + '/mesh' + str(i) + '.obj',
