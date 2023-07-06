@@ -149,10 +149,9 @@ class Pipeline:
             # gamma ?
             # do we take in account rotation when computing normals ?
             # coeff -> face shape -> face shape rotated -> face vertex (based on camera) -> normals (based on face vertex) -> rotated normals *
-            gamma =
-            vertex_colors = self.computeVertexColor(diffuseTextures, specularTextures, roughnessTextures, normals)
+            vertexColors = self.computeVertexColor(diffuseTextures, specularTextures, roughnessTextures, normals)
             # face_shape -> self.computeShape() -> vertices (if no camera) or cameraVerts (if  camera)
-            images = self.computeVertexBasedImage(cameraVerts, vertex_colors)
+            images = self.computeVertexImage(cameraVerts, vertexColors)
         else:
             scenes = self.renderer.buildScenes(cameraVerts, self.faces32, normals, self.uvMap, diffuseTextures, specularTextures, torch.clamp(roughnessTextures, 1e-20, 10.0), self.vFocals, envMaps)
             if renderAlbedo:
@@ -205,12 +204,20 @@ class Pipeline:
             normals        -- torch.tensor, size (B, N, 3), rotated face normal
             gamma            -- torch.tensor, size (B, 27), SH coeffs
         """
-        batch_size = gamma.shape[0]
         # v_num = face_texture.shape[1]
         a,c = self.sh.a, self.sh.c
+        # we init gamma with a bunch of zeros (could cause wrong results)
+        gamma = torch.zeros(normals.shape[0],27)
+        # Move gamma to the same device as normals
+        gamma = gamma.to(normals.device)
+        # gamma = torch.ones(normals.shape[0],27)
+        batch_size = gamma.shape[0]        
+        # default initiation in faceRecon3D (may need to be update or found)
         gamma = gamma.reshape([batch_size, 3, 9])
-        gamma = gamma + self.init_lit
+        init_lit = torch.tensor([0.8, 0, 0, 0, 0, 0, 0, 0, 0], dtype=torch.float32, device=normals.device)
+        gamma = gamma + init_lit # use init_lit
         gamma = gamma.permute(0, 2, 1)
+        
         Y = torch.cat([
              a[0] * c[0] * torch.ones_like(normals[..., :1]).to(self.device),
             -a[1] * c[1] * normals[..., 1:2],
@@ -228,8 +235,26 @@ class Pipeline:
         # WIP not sure about that one 
         # bd = face_texture_diffuse 
         # bs = face_texture_roughness * face_texture_specular
-        face_color = torch.cat([r, g, b], dim=-1) * diffuseTexture  
-        # face_color = Y * diffuseTexture  
+        print(gamma.shape)
+        print(Y.shape)
+        print(r.shape)
+        print(g.shape)
+        print(b.shape)
+        print("normals") # should be B N 3        
+        print(normals.shape) # should be B N 3        
+        print(diffuseTexture.shape) # should be B N 3 but is B x y 3
+        # can i convert texture from B x,y 3 to be linear ? where N is vertex position
+        N = normals.shape[1]
+        print(N)
+        # Reshape diffuseTexture to [1, 262144, 3]
+        # Resize diffuseTexture_reshaped to match the size of Y
+        #[ 1, x, N, 3]
+        diffuseTexture_resized = torch.nn.functional.interpolate(diffuseTexture, size=(N, 3), mode='bilinear')
+        # [1, N, 3]
+        diffuseTexture_resized = torch.squeeze(diffuseTexture_resized, dim=1)
+        print(diffuseTexture_resized.shape) # should be B N 3 but is B x y 3
+        
+        face_color = torch.cat([r, g, b], dim=-1) * diffuseTexture_resized  
         # we need to update face_color to match Images
         return face_color
     # predict face and mask
@@ -244,10 +269,15 @@ class Pipeline:
         Parameters:
             predicted_vertex
             face_buf : # vertex indices for each face. starts from 0. [F,3]         self.face_buf = model['tri'].astype(np.int64) - 1 (based on face model)
-            predicted_color : 
+            predicted_color : color at each vertices
         """
-       
-        return self.NvidiffrastRenderer(vertices, feat=verticesColor)
+        # dans saveObj, le visage = faces32 et le nombre de triangles = shape[0]
+        
+        # face_buf = (np.int64) (self.faces32.shape[0]-1)
+        face_buf = torch.tensor(self.faces32.shape).tolist()
+        face_buf = np.array(face_buf, dtype=np.int64) - 1
+        print(face_buf.shape)
+        return self.NvidiffrastRenderer(vertices, face_buf, feat=verticesColor)
     # draw the visuals
     def compute_visuals(self):
         with torch.no_grad():

@@ -47,6 +47,7 @@ class NvidiffrastRenderer(nn.Module):
             feat(optional)  -- torch.tensor, size (B, C), features
         """
         device = vertex.device
+        print(tri.shape)
         rsize = int(self.rasterize_size)
         ndc_proj = self.ndc_proj.to(device)
         # trans to homogeneous coordinates of 3d vertices, the direction of y is the same as v
@@ -77,7 +78,9 @@ class NvidiffrastRenderer(nn.Module):
             tri = torch.cat(tri, dim=0)
 
         # for range_mode vetex: [B*N, 4], tri: [B*M, 3], for instance_mode vetex: [B, N, 4], tri: [M, 3]
-        tri = tri.type(torch.int32).contiguous()
+        # Assuming vertex_ndc and tri are on different GPU devices
+        tri = tri.astype(np.int32).contiguous()
+        # a lot of converting of datatypes ... could be bad ?
         rast_out, _ = dr.rasterize(self.ctx, vertex_ndc.contiguous(), tri, resolution=[rsize, rsize], ranges=ranges)
 
         depth, _ = dr.interpolate(vertex.reshape([-1,4])[...,2].unsqueeze(1).contiguous(), rast_out, tri) 
