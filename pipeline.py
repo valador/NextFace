@@ -273,11 +273,9 @@ class Pipeline:
         """
         # dans saveObj, le visage = faces32 et le nombre de triangles = shape[0]
         
-        # face_buf = (np.int64) (self.faces32.shape[0]-1)
-        face_buf = torch.tensor(self.faces32.shape).tolist()
-        face_buf = np.array(face_buf, dtype=np.int64) - 1
-        print(face_buf.shape)
-        return self.NvidiffrastRenderer(vertices, face_buf, feat=verticesColor)
+        #TODO do custom projection here to compute an image
+        
+        return None
     # draw the visuals
     def compute_visuals(self):
         with torch.no_grad():
