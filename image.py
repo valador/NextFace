@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import cv2
 import os
-
+from PIL import Image
 
 def saveImage(image, fileName, gamma = 2.2):
     '''

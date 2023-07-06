@@ -1,10 +1,12 @@
+import math
 from sphericalharmonics import SphericalHarmonics
 from morphablemodel import MorphableModel
 from renderer import Renderer
 from camera import Camera
 from customRenderer import *
-from customRenderer.nvdiffrast import NvidiffrastRenderer
 from utils import *
+from image import saveImage
+
 class Pipeline:
 
     def __init__(self,  config):
@@ -36,18 +38,6 @@ class Pipeline:
         self.faces32 = self.morphableModel.faces.to(torch.int32).contiguous()
         self.shBands = config.bands
         self.sharedIdentity = False
-        #DANIEL  To Test 
-        # Define Renderer
-        # Default settings in facerecon_model.py ~ might need to update them for our specific use case
-        focal = 1015
-        center=112
-        camera_d=10
-        use_last_fc=False
-        z_near=5
-        z_far=15
-        fov = 2 * np.arctan(center / focal) * 180 / np.pi      
-        use_opengl = True   
-        self.NvidiffrastRenderer = NvidiffrastRenderer(rasterize_fov=fov, znear=z_near, zfar=z_far, rasterize_size=int(2 * center), use_opengl=use_opengl)
 
     def initSceneParameters(self, n, sharedIdentity = False):
         '''
@@ -235,47 +225,110 @@ class Pipeline:
         # WIP not sure about that one 
         # bd = face_texture_diffuse 
         # bs = face_texture_roughness * face_texture_specular
-        print(gamma.shape)
-        print(Y.shape)
-        print(r.shape)
-        print(g.shape)
-        print(b.shape)
-        print("normals") # should be B N 3        
-        print(normals.shape) # should be B N 3        
-        print(diffuseTexture.shape) # should be B N 3 but is B x y 3
+        # print(gamma.shape)
+        # print(Y.shape)
+        # print(r.shape)
+        # print(g.shape)
+        # print(b.shape)
+        # print("normals") # should be B N 3        
+        # print(normals.shape) # should be B N 3        
+        # print(diffuseTexture.shape) # should be B N 3 but is B x y 3
         # can i convert texture from B x,y 3 to be linear ? where N is vertex position
         N = normals.shape[1]
-        print(N)
+        # print(N)
         # Reshape diffuseTexture to [1, 262144, 3]
         # Resize diffuseTexture_reshaped to match the size of Y
         #[ 1, x, N, 3]
         diffuseTexture_resized = torch.nn.functional.interpolate(diffuseTexture, size=(N, 3), mode='bilinear')
         # [1, N, 3]
         diffuseTexture_resized = torch.squeeze(diffuseTexture_resized, dim=1)
-        print(diffuseTexture_resized.shape) # should be B N 3 but is B x y 3
+        # print(diffuseTexture_resized.shape) # should be B N 3 but is B x y 3
         
         face_color = torch.cat([r, g, b], dim=-1) * diffuseTexture_resized  
         # we need to update face_color to match Images
         return face_color
     # predict face and mask
-    def computeVertexImage(self, vertices, verticesColor) : 
+    def computeVertexImage(self, cameraVertices, verticesColor) : 
         #pred mask + pred face 
         # Renderer(vertex, face_buffer, face_color)    
         """
         Return:
-            predicted mask :
-            _ :
-            predicted face : 
+            image
         Parameters:
-            predicted_vertex
-            face_buf : # vertex indices for each face. starts from 0. [F,3]         self.face_buf = model['tri'].astype(np.int64) - 1 (based on face model)
-            predicted_color : color at each vertices
+            cameraVertices : they should already take in account the camera view
+            verticesColor : color at each vertices
         """
-        # dans saveObj, le visage = faces32 et le nombre de triangles = shape[0]
         
         #TODO do custom projection here to compute an image
+        # convert vertices from world plan to camera plan (should already be done since we get cameraVertices)
+        image_resolution = [256,256]
+        fov = torch.tensor([360.0 * math.atan(image_resolution[0] / (2.0 * self.vFocals)) / math.pi]) # from renderer.py
+        far = 100
+        near = 0.1
+        #setup proj matrix
+        scale = 1.0 / np.tan(fov * 0.5 * np.pi / 180)
+        projMatrix = torch.zeros(4,4)
+        #scale x and y coords of projected point
+        projMatrix[0,0] = scale
+        projMatrix[1,1] = scale
+        # remap z [0,1]
+        projMatrix[2,2] = -far/ (far-near)
+        # remap z [0,1]
+        projMatrix[3,2] = (-far * near) / (far-near)
+        # set w = -z
+        projMatrix[2,3] = -1  
+        projMatrix = projMatrix.to(self.device)
+        """
+        Perform perspective projection on 3D vertices using the camera matrix.
+
+        Args:
+            vertices (torch.Tensor): Input vertices of shape (N, 3), where N is the number of vertices.
+            camera_matrix (torch.Tensor): Camera matrix of shape (3, 4).
+
+        Returns:
+            torch.Tensor: Projected vertices of shape (N, 2), where N is the number of vertices.
+        """
+        # cameraVertices = cameraVertices.to(self.device)
+        # create a tensor with ones
+        ones_tensor = torch.ones(cameraVertices.shape[0], cameraVertices.shape[1],1, device=self.device)
         
-        return None
+        # print(cameraVertices.shape)
+        # print(ones_tensor.shape)
+        
+        # #translation component of the camera matrix to be included in the projection.
+        homogeneousVertices = torch.cat((cameraVertices, ones_tensor), dim=2)
+        # #This multiplication projects the 3D vertices onto a 2D plane.
+        # #The function then selects the first two columns of the projected vertices tensor using [:, :2]. 
+        # #This step discards the homogeneous coordinate (the third column) since it is no longer needed.
+        # #retrieve cameraMatrix (TODO redondant call)
+        # cameraMatrix = self.camera.computeTransformation(self.vRotation,self.vTranslation)
+        # print(homogeneous_vertices.shape)
+        # print(cameraMatrix.shape)
+        # projected_vertices = torch.matmul(cameraVertices, torch.transpose(cameraMatrix, 1, 2))[:, :, :2]
+        projectedVertices = torch.matmul(homogeneousVertices, projMatrix)
+        
+        # Example: Save the rendered image as a numpy array
+        # Create a blank image
+        image = torch.zeros((3, image_resolution[0], image_resolution[1]))
+        # reformat TODO cleaner
+        projectedVertices = projectedVertices.squeeze(0)
+        print(verticesColor.shape)
+        verticesColor = verticesColor.squeeze(0).squeeze(0)
+        print(projectedVertices.shape)
+        print(verticesColor.shape)
+        print(image.shape)
+        # Assign colors to pixels based on projected vertices
+        for vertex, color in zip(projectedVertices, verticesColor):
+            print(vertex.shape)
+            print(color.shape)
+            x, y, z, w = vertex.round().int().tolist()
+            
+            image[:, y, x] += color
+
+        # Display or save the image
+        saveImage(image, "/test")
+
+        return image
     # draw the visuals
     def compute_visuals(self):
         with torch.no_grad():
