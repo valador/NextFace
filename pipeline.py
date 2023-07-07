@@ -6,7 +6,7 @@ from camera import Camera
 from customRenderer import *
 from utils import *
 from image import saveImage
-
+import matplotlib.pyplot as plt
 class Pipeline:
 
     def __init__(self,  config):
@@ -249,85 +249,51 @@ class Pipeline:
         return face_color
     # predict face and mask
     def computeVertexImage(self, cameraVertices, verticesColor) : 
-        #pred mask + pred face 
-        # Renderer(vertex, face_buffer, face_color)    
-        """
-        Return:
-            image
-        Parameters:
-            cameraVertices : they should already take in account the camera view
-            verticesColor : color at each vertices
-        """
-        
-        #TODO do custom projection here to compute an image
-        # convert vertices from world plan to camera plan (should already be done since we get cameraVertices)
-        image_resolution = [256,256]
-        fov = torch.tensor([360.0 * math.atan(image_resolution[0] / (2.0 * self.vFocals)) / math.pi]) # from renderer.py
+        # Set the projection matrix
+        image_size = 256  # Output image size
+        fov = torch.tensor([360.0 * torch.arctan(image_size / (2.0 * self.vFocals)) / torch.pi]) # from renderer.py
         far = 100
         near = 0.1
-        #setup proj matrix
-        scale = 1.0 / np.tan(fov * 0.5 * np.pi / 180)
-        projMatrix = torch.zeros(4,4)
-        #scale x and y coords of projected point
-        projMatrix[0,0] = scale
-        projMatrix[1,1] = scale
-        # remap z [0,1]
-        projMatrix[2,2] = -far/ (far-near)
-        # remap z [0,1]
-        projMatrix[3,2] = (-far * near) / (far-near)
-        # set w = -z
-        projMatrix[2,3] = -1  
-        projMatrix = projMatrix.to(self.device)
-        """
-        Perform perspective projection on 3D vertices using the camera matrix.
+        
+        scale = 1 / np.tan(fov * 0.5 * np.pi / 180)
+        projection_matrix = np.array([
+            [scale, 0, 0, 0],
+            [0, scale, 0, 0],
+            [0, 0, -far / (far - near), -far * near / (far - near)],
+            [0, 0, -1, 0]
+        ])
 
-        Args:
-            vertices (torch.Tensor): Input vertices of shape (N, 3), where N is the number of vertices.
-            camera_matrix (torch.Tensor): Camera matrix of shape (3, 4).
+        # Example usage
+        vertices =  cameraVertices.numpy().reshape(cameraVertices.shape[0],3)     
 
-        Returns:
-            torch.Tensor: Projected vertices of shape (N, 2), where N is the number of vertices.
-        """
-        # cameraVertices = cameraVertices.to(self.device)
-        # create a tensor with ones
-        ones_tensor = torch.ones(cameraVertices.shape[0], cameraVertices.shape[1],1, device=self.device)
-        
-        # print(cameraVertices.shape)
-        # print(ones_tensor.shape)
-        
-        # #translation component of the camera matrix to be included in the projection.
-        homogeneousVertices = torch.cat((cameraVertices, ones_tensor), dim=2)
-        # #This multiplication projects the 3D vertices onto a 2D plane.
-        # #The function then selects the first two columns of the projected vertices tensor using [:, :2]. 
-        # #This step discards the homogeneous coordinate (the third column) since it is no longer needed.
-        # #retrieve cameraMatrix (TODO redondant call)
-        # cameraMatrix = self.camera.computeTransformation(self.vRotation,self.vTranslation)
-        # print(homogeneous_vertices.shape)
-        # print(cameraMatrix.shape)
-        # projected_vertices = torch.matmul(cameraVertices, torch.transpose(cameraMatrix, 1, 2))[:, :, :2]
-        projectedVertices = torch.matmul(homogeneousVertices, projMatrix)
-        
-        # Example: Save the rendered image as a numpy array
-        # Create a blank image
-        image = torch.zeros((3, image_resolution[0], image_resolution[1]))
-        # reformat TODO cleaner
-        projectedVertices = projectedVertices.squeeze(0)
-        print(verticesColor.shape)
-        verticesColor = verticesColor.squeeze(0).squeeze(0)
-        print(projectedVertices.shape)
-        print(verticesColor.shape)
-        print(image.shape)
-        # Assign colors to pixels based on projected vertices
-        for vertex, color in zip(projectedVertices, verticesColor):
-            print(vertex.shape)
-            print(color.shape)
-            x, y, z, w = vertex.round().int().tolist()
-            
-            image[:, y, x] += color
+        # Project the vertices onto the perspective plane
+        projected_vertices = self.project_vertices(vertices, projection_matrix)
+        # Generate the image
+        image = self.generate_image(projected_vertices, image_size)
 
         # Display or save the image
-        saveImage(image, "/test")
+        plt.imshow(image)
+        plt.axis('off')
+        plt.show()
+        # plt.savefig('output.png')  # Uncomment this line to save the image as a file
 
+        return image
+    def project_vertices(vertices, projection_matrix):
+        # Perform perspective projection on 3D vertices
+        homogeneous_vertices = np.concatenate((vertices, np.ones((vertices.shape[0], 1))), axis=1)
+        projected_vertices = np.dot(homogeneous_vertices, projection_matrix.T)
+        projected_vertices /= projected_vertices[:, 3:]
+        projected_vertices = projected_vertices[:, :3]
+        return projected_vertices
+    
+    def generate_image(projected_vertices, image_size):
+        # Generate an image based on the projected vertices
+        image = np.zeros((image_size, image_size, 3), dtype=np.uint8)
+        for vertex in projected_vertices:
+            x, y, _ = vertex
+            x_pixel = int((x + 1) * 0.5 * image_size)
+            y_pixel = int((1 - y) * 0.5 * image_size)
+            image[y_pixel, x_pixel] = [255, 255, 255]  # Set pixel color to white
         return image
     # draw the visuals
     def compute_visuals(self):
