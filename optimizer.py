@@ -213,7 +213,7 @@ class Optimizer:
             if self.verbose:
                 print(iter, '=>', loss.item())
 
-        self.plotLoss(losses, 0, self.outputDir + 'checkpoints/stage1_loss.png')
+        # self.plotLoss(losses, 0, self.outputDir + 'checkpoints/stage1_loss.png')
         self.saveParameters(self.outputDir + 'checkpoints/stage1_output.pickle')
 
     def runStep2(self):
@@ -268,7 +268,7 @@ class Optimizer:
             if self.config.debugFrequency > 0 and iter % self.config.debugFrequency == 0:
                 self.debugFrame(smoothedImage, inputTensor, diffuseTextures, specularTextures, self.pipeline.vRoughness, self.debugDir + 'debug1_iter' + str(iter))
 
-        self.plotLoss(losses, 1, self.outputDir + 'checkpoints/stage2_loss.png')
+        # self.plotLoss(losses, 1, self.outputDir + 'checkpoints/stage2_loss.png')
         self.saveParameters(self.outputDir + 'checkpoints/stage2_output.pickle')
 
     def runStep3(self):
@@ -333,7 +333,7 @@ class Optimizer:
             if self.config.debugFrequency > 0 and  iter % self.config.debugFrequency == 0:
                 self.debugFrame(smoothedImage, inputTensor, vDiffTextures, vSpecTextures, vRoughTextures, self.debugDir + 'debug2_iter' + str(iter))
 
-        self.plotLoss(losses, 2, self.outputDir + 'checkpoints/stage3_loss.png')
+        # self.plotLoss(losses, 2, self.outputDir + 'checkpoints/stage3_loss.png')
 
         self.vEnhancedDiffuse = vDiffTextures.detach().clone()
         self.vEnhancedSpecular = vSpecTextures.detach().clone()

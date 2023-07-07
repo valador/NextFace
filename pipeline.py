@@ -7,6 +7,10 @@ from customRenderer import *
 from utils import *
 from image import saveImage
 import matplotlib.pyplot as plt
+import torchvision.transforms as transforms
+from PIL import Image
+from mpl_toolkits.mplot3d import Axes3D
+
 class Pipeline:
 
     def __init__(self,  config):
@@ -252,11 +256,9 @@ class Pipeline:
         #since we already have the cameraVertices
         width = 256
         height = 256
-        image = torch.zeros((width, height, 3), dtype=np.uint8)
         fov = torch.tensor([360.0 * torch.atan(width / (2.0 * self.vFocals)) / torch.pi]) # from renderer.py
-        far = 100
+        far = 10000
         near = 0.1
-        #todo refactor not in for loop
         
         # 1- find projectionMatrix based from camera : camera space -> clip space
         projMatrix = self.perspectiveProjMatrix(fov,width/height, near, far).to(self.device)
@@ -269,18 +271,41 @@ class Pipeline:
         vertices_in_clip_space = (projMatrix @ cameraVertices_homogeneous.T).T  # Now the shape is [N, 4] again
 
         # 2- clip vertices not seen
-        clipped_vertices = self.clip(vertices_in_clip_space)
-        vertices_in_screen_space = self.viewport_transform(clipped_vertices, width, height)
+        # clipped_vertices = self.clip(vertices_in_clip_space)
+        vertices_in_screen_space = self.viewport_transform(vertices_in_clip_space, width, height)
 
+        print(vertices_in_screen_space.shape)
+        
+        self.displayTensor(vertices_in_screen_space)
+        
         # Remove vertices marked as np.nan by the clip function
         mask = ~torch.isnan(vertices_in_screen_space).any(dim=-1)
         vertices_in_screen_space = vertices_in_screen_space[mask]
-
-        print(vertices_in_screen_space.shape)
-        plt.scatter(vertices_in_screen_space[:, 0], vertices_in_screen_space[:, 1], c=verticesColor[mask], s=100)
-        plt.gca().invert_yaxis()
-        plt.show()
         
+        # modify vertices color
+        #If every 512 elements along the second dimension have the same color, you can simply take one slice along that dimension:
+        # verticesColor = verticesColor[0, 0, :, :]
+       # If the colors are different for every 512 elements along the second dimension, then you may need to average or otherwise combine them:
+        verticesColor = verticesColor.mean(dim=1)  # Take the mean along the 512 dimension
+        verticesColor = verticesColor.squeeze(0)  # Remove the first dimension
+        
+        # Ensure vertices and colors are detached and moved to cpu, then convert to numpy
+        vertices_np = vertices_in_screen_space.detach().cpu().numpy()
+        colors_np = verticesColor[mask].detach().cpu().numpy()
+
+        # Convert your vertices and colors to an image
+        # Assuming the vertices are normalized to [0,1] and colors are in the range [0,255]
+        image_data = np.zeros((height, width, 3), dtype=np.uint8)
+        for i, vertex in enumerate(vertices_np):
+            x, y = int(vertex[0]), int(vertex[1])
+            if 0 <= x < width and 0 <= y < height:
+                image_data[y, x, :] = colors_np[i, :]
+
+        # Convert the numpy array to a PIL Image
+        image = Image.fromarray(image_data)
+
+        # Display the image
+        image.show()
         return image
     def perspectiveProjMatrix(self, fov, aspect_ratio, near, far):
         """
@@ -309,6 +334,8 @@ class Pipeline:
         """
         w = vertices[:, 3:4]
         mask = (abs(vertices[:, :3]) <= w).all(axis=-1, keepdims=True)
+        # adjust the dimensions of your mask so that it's broadcastable to the tensor's shape.
+        mask = mask.repeat(1, vertices.shape[1])
         vertices_out = vertices.clone()
         vertices_out[~mask] = np.nan
         return vertices_out
@@ -329,6 +356,25 @@ class Pipeline:
         vertices_out[:, 1] = (vertices_out[:, 1] + 1) * 0.5 * height
         return vertices_out
     # draw the visuals
+    def displayTensor(self, vertices):
+        """util function to display tensors
+
+        Args:
+            vertices (Tensor): vertices to display
+        """
+        # Suppose vertices is your PyTorch tensor of shape (N, 3)
+        vertices = vertices.detach().cpu().numpy()  # convert to numpy array
+
+        # convert from homogeneous coordinates to 3D coordinates
+        vertices = vertices / vertices[:, 3, np.newaxis]
+
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+
+        ax.scatter(vertices[:, 0], vertices[:, 1], vertices[:, 2],s=15)
+        plt.show()
+
+        
     def compute_visuals(self):
         with torch.no_grad():
             input_img_numpy = 255. * self.input_img.detach().cpu().permute(0, 2, 3, 1).numpy()
