@@ -249,52 +249,85 @@ class Pipeline:
         return face_color
     # predict face and mask
     def computeVertexImage(self, cameraVertices, verticesColor) : 
-        # Set the projection matrix
-        image_size = 256  # Output image size
-        fov = torch.tensor([360.0 * torch.arctan(image_size / (2.0 * self.vFocals)) / torch.pi]) # from renderer.py
+        #since we already have the cameraVertices
+        width = 256
+        height = 256
+        image = torch.zeros((width, height, 3), dtype=np.uint8)
+        fov = torch.tensor([360.0 * torch.atan(width / (2.0 * self.vFocals)) / torch.pi]) # from renderer.py
         far = 100
         near = 0.1
+        #todo refactor not in for loop
         
-        scale = 1 / np.tan(fov * 0.5 * np.pi / 180)
-        projection_matrix = np.array([
-            [scale, 0, 0, 0],
-            [0, scale, 0, 0],
-            [0, 0, -far / (far - near), -far * near / (far - near)],
+        # 1- find projectionMatrix based from camera : camera space -> clip space
+        projMatrix = self.perspectiveProjMatrix(fov,width/height, near, far).to(self.device)
+        print(projMatrix.shape)
+        print(cameraVertices.shape)
+        #pour tout les vertex -> projMatrix dot vertex
+        
+        ones = torch.ones((cameraVertices.shape[1], 1), device=self.device)
+        cameraVertices_homogeneous = torch.cat((cameraVertices[0], ones), dim=-1)  # Now the shape is [N, 4]
+        vertices_in_clip_space = (projMatrix @ cameraVertices_homogeneous.T).T  # Now the shape is [N, 4] again
+
+        # 2- clip vertices not seen
+        clipped_vertices = self.clip(vertices_in_clip_space)
+        vertices_in_screen_space = self.viewport_transform(clipped_vertices, width, height)
+
+        # Remove vertices marked as np.nan by the clip function
+        mask = ~torch.isnan(vertices_in_screen_space).any(dim=-1)
+        vertices_in_screen_space = vertices_in_screen_space[mask]
+
+        print(vertices_in_screen_space.shape)
+        plt.scatter(vertices_in_screen_space[:, 0], vertices_in_screen_space[:, 1], c=verticesColor[mask], s=100)
+        plt.gca().invert_yaxis()
+        plt.show()
+        
+        return image
+    def perspectiveProjMatrix(self, fov, aspect_ratio, near, far):
+        """
+        Create a perspective projection matrix.
+        
+        :param fov: field of view angle in the y direction (in degrees).
+        :param aspect_ratio: aspect ratio of the viewport (width/height).
+        :param near: distance to the near clipping plane.
+        :param far: distance to the far clipping plane.
+        """
+        f = 1.0 / np.tan(np.radians(fov) / 2)
+        projMatrix = torch.tensor([
+            [f / aspect_ratio, 0, 0, 0],
+            [0, f, 0, 0],
+            [0, 0, (far + near) / (near - far), (2 * far * near) / (near - far)],
             [0, 0, -1, 0]
         ])
+        print(projMatrix)
+        return projMatrix
+    def clip(self, vertices):
+        """
+        Clip vertices in clip space.
+        
+        :param vertices: Nx4 matrix of vertices in homogeneous coordinates.
+        :return: Nx4 matrix of vertices, vertices outside viewing frustum are replaced with [np.nan, np.nan, np.nan, np.nan].
+        """
+        w = vertices[:, 3:4]
+        mask = (abs(vertices[:, :3]) <= w).all(axis=-1, keepdims=True)
+        vertices_out = vertices.clone()
+        vertices_out[~mask] = np.nan
+        return vertices_out
+    def viewport_transform(self, vertices, width, height):
+        """
+        Transform vertices from clip space to screen space.
+        
+        :param vertices: Nx4 matrix of vertices in homogeneous coordinates.
+        :param width: Width of the viewport in pixels.
+        :param height: Height of the viewport in pixels.
+        :return: Nx3 matrix of vertices in screen space.
+        """
+        # Perspective divide: converting from homogeneous coordinates to 3D coordinates
+        vertices_out = vertices / vertices[:, 3:]
 
-        # Example usage
-        vertices =  cameraVertices.numpy().reshape(cameraVertices.shape[0],3)     
-
-        # Project the vertices onto the perspective plane
-        projected_vertices = self.project_vertices(vertices, projection_matrix)
-        # Generate the image
-        image = self.generate_image(projected_vertices, image_size)
-
-        # Display or save the image
-        plt.imshow(image)
-        plt.axis('off')
-        plt.show()
-        # plt.savefig('output.png')  # Uncomment this line to save the image as a file
-
-        return image
-    def project_vertices(vertices, projection_matrix):
-        # Perform perspective projection on 3D vertices
-        homogeneous_vertices = np.concatenate((vertices, np.ones((vertices.shape[0], 1))), axis=1)
-        projected_vertices = np.dot(homogeneous_vertices, projection_matrix.T)
-        projected_vertices /= projected_vertices[:, 3:]
-        projected_vertices = projected_vertices[:, :3]
-        return projected_vertices
-    
-    def generate_image(projected_vertices, image_size):
-        # Generate an image based on the projected vertices
-        image = np.zeros((image_size, image_size, 3), dtype=np.uint8)
-        for vertex in projected_vertices:
-            x, y, _ = vertex
-            x_pixel = int((x + 1) * 0.5 * image_size)
-            y_pixel = int((1 - y) * 0.5 * image_size)
-            image[y_pixel, x_pixel] = [255, 255, 255]  # Set pixel color to white
-        return image
+        # Viewport transformation
+        vertices_out[:, 0] = (vertices_out[:, 0] + 1) * 0.5 * width
+        vertices_out[:, 1] = (vertices_out[:, 1] + 1) * 0.5 * height
+        return vertices_out
     # draw the visuals
     def compute_visuals(self):
         with torch.no_grad():
@@ -304,7 +337,7 @@ class Pipeline:
             
             if self.gt_lm is not None:
                 gt_lm_numpy = self.gt_lm.cpu().numpy()
-                pred_lm_numpy = self.pred_lm.detach().cpu().numpy()
+                pred_lm_numpy = self.pred_lkm.detach().cpu().numpy()
                 output_vis_numpy = self.draw_landmarks(output_vis_numpy_raw, gt_lm_numpy, 'b')
                 output_vis_numpy = self.draw_landmarks(output_vis_numpy, pred_lm_numpy, 'r')
             
