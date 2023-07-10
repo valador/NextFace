@@ -242,7 +242,7 @@ class Optimizer:
             specularTextures = self.pipeline.morphableModel.generateTextureFromAlbedo(specAlbedo)
 
             images = self.pipeline.render(cameraVerts, diffuseTextures, specularTextures,vertexBased=True)
-            mask = images[..., 3:]
+            mask = images[..., 3:] # extract alpha channel 
             smoothedImage = smoothImage(images[..., 0:3], self.smoothing)
             diff = mask * (smoothedImage - inputTensor).abs()
             #photoLoss =  diff.mean(dim=-1).sum() / float(self.framesNumber)
