@@ -199,12 +199,11 @@ class Pipeline:
         """
         # v_num = face_texture.shape[1]
         a,c = self.sh.a, self.sh.c
-        # we init gamma with a bunch of zeros (could cause wrong results)
-        gamma = torch.zeros(normals.shape[0],27)
-        # Move gamma to the same device as normals
-        gamma = gamma.to(normals.device)
-        # gamma = torch.ones(normals.shape[0],27)
-        batch_size = gamma.shape[0]        
+        # gamma is given in optimizer.py so to avoid we will just copy the hardcoded value here but REFACTOR TODO
+        gammaInit = 2.2
+        # we init gamma with a bunch of zeros 
+        gamma = torch.full((normals.shape[0],27),gammaInit, device=self.device)
+        batch_size = normals.shape[0]        
         # default initiation in faceRecon3D (may need to be update or found)
         gamma = gamma.reshape([batch_size, 3, 9])
         init_lit = torch.tensor([0.8, 0, 0, 0, 0, 0, 0, 0, 0], dtype=torch.float32, device=normals.device)
@@ -242,14 +241,7 @@ class Pipeline:
         # WIP not sure about that one 
         # bd = face_texture_diffuse 
         # bs = face_texture_roughness * face_texture_specular
-        # print(gamma.shape)
-        # print(Y.shape)
-        # print(r.shape)
-        # print(g.shape)
-        # print(b.shape)
-        # print("normals") # should be B N 3        
-        # print(normals.shape) # should be B N 3        
-        # print(diffuseTexture.shape) # should be B N 3 but is B x y 3
+        
         # can i convert texture from B x,y 3 to be linear ? where N is vertex position
         N = normals.shape[1]
         # print(N)
@@ -261,7 +253,7 @@ class Pipeline:
         diffuseTexture_resized = torch.squeeze(diffuseTexture_resized, dim=1)
         
         #for testing purposes, lets make the texture all white
-        diffuseTexture_resized.ones_like(normals)
+        diffuseTexture_resized.fill_(1.0)
         
         face_color = torch.cat([r, g, b], dim=-1) * diffuseTexture_resized  
         # we need to update face_color to match Images
@@ -272,7 +264,7 @@ class Pipeline:
         width = 256
         height = 256
         fov = torch.tensor([360.0 * torch.atan(width / (2.0 * self.vFocals)) / torch.pi]) # from renderer.py
-        far = 100
+        far = 1000
         near = 0.1
         
         # 1- find projectionMatrix based from camera : camera space -> clip space
@@ -282,12 +274,12 @@ class Pipeline:
         homogeneous_vertices = torch.cat((cameraVertices, ones), -1)
         vertices_in_clip_space = (projMatrix @ homogeneous_vertices.transpose(-1, -2)).transpose(-1, -2)
 
-        # Normalize the vertices (divide by W)
+        # Normalize the vertices (divide by W) and put them in cartesian coordinates
         vertices_in_clip_space = vertices_in_clip_space[..., :3] / vertices_in_clip_space[..., 3:]
-
-        # Ignore vertices where x, y, or z > 1 or < -1
-        mask = torch.abs(vertices_in_clip_space) <= 1.0
-        mask = mask.min(-1)[0]
+        # self.displayTensor(vertices_in_clip_space)
+        # Ignore vertices where x, y,  > 1 or < -1
+        mask = torch.abs(vertices_in_clip_space[:, :, :2]) <= 1.0  # Only consider x and y coordinates
+        mask = mask.all(dim=-1)  # All x and y must satisfy the condition
         vertices_in_clip_space = vertices_in_clip_space[mask]
 
         # Convert vertices from clip space to screen space
@@ -298,11 +290,11 @@ class Pipeline:
         # Vertices color manipulation
         verticesColor = verticesColor.mean(dim=1).squeeze(0) 
         mask = mask.squeeze(0)
-        colors_in_screen_space = verticesColor[mask].detach().cpu()
+        colors_in_screen_space = verticesColor[mask]
+        # colors_in_screen_space = verticesColor[mask].detach().cpu()
 
         # Create an empty image
         image_data = torch.zeros((height, width, 3), dtype=torch.float32, device=self.device)
-
         # Convert your vertices and colors to an image
         for i, vertex in enumerate(vertices_in_screen_space):
             x, y = int(vertex[0]), int(vertex[1])
@@ -313,14 +305,14 @@ class Pipeline:
         # Convert the image_data tensor to a numpy array, and then to a PIL Image
         image = Image.fromarray(image_data.detach().cpu().numpy().astype('uint8'))
         image.show()
-        
         # Add batch dimension to image_data
         image_data = image_data.unsqueeze(0)
+        #display image to debug
+        # self.displayImageTensor(image_data) 
         # add alpha channel to rgb
         alpha_channel = torch.ones((1, 256, 256, 1)).to(self.device)  # Ensure it's on the same device as your image
         image_data = torch.cat((image_data, alpha_channel), dim=-1)  # Append alpha channel
 
-        # image_data.float() # convert to float tensor
         return image_data
     def perspectiveProjMatrix(self, fov, aspect_ratio, near, far):
         """
@@ -338,19 +330,19 @@ class Pipeline:
         # bottom = -top
         # 2/(right-left)
         # 2/(top-bottom)
-        projMatrix = torch.tensor([
-            [f / aspect_ratio, 0, 0, 0],
-            [0, f, 0, 0],
-            [0, 0, (far + near) / (far-near), 1],
-            [0, 0, (-2 * near * far) / (far - near), 0]
-        ])
-        # or
         # projMatrix = torch.tensor([
         #     [f / aspect_ratio, 0, 0, 0],
         #     [0, f, 0, 0],
-        #     [0, 0, -(far + near) / (far-near), -(2 * far * near) / (far - near)],
-        #     [0, 0, -1, 0]
+        #     [0, 0, (far + near) / (far-near), 1],
+        #     [0, 0, (-2 * near * far) / (far - near), 0]
         # ])
+        # or
+        projMatrix = torch.tensor([
+            [f / aspect_ratio, 0, 0, 0],
+            [0, f, 0, 0],
+            [0, 0, -(far + near) / (far-near), -(2 * far * near) / (far - near)],
+            [0, 0, -1, 0]
+        ])
         return projMatrix
     def clip(self, vertices):
         """
@@ -387,20 +379,58 @@ class Pipeline:
         """util function to display tensors
 
         Args:
-            vertices (Tensor): vertices to display
+            vertices (Tensor of shape [1, N, 3]): vertices to display (in cartesian coordinates)
         """
-        # Suppose vertices is your PyTorch tensor of shape (N, 3)
-        vertices = vertices.detach().cpu().numpy()  # convert to numpy array
+        # Convert tensor to numpy array
+        scatter_np = vertices.detach().cpu().numpy()
+        # Reshape scatter_np to [N, 3] for scatter()
+        scatter_np = np.squeeze(scatter_np, axis=0) 
+        # Compute the mask
+        mask = np.abs(scatter_np[:, :2]) <= 1.0  # Only consider x and y coordinates
+        mask = mask.all(axis=-1)  # All x and y must satisfy the condition
 
-        # convert from homogeneous coordinates to 3D coordinates
-        vertices = vertices / vertices[:, 3, np.newaxis]
+        # Create a color array (all 'green' initially)
+        colors = np.array(['green'] * len(mask), dtype=str)
 
+        # Change the color of vertices NOT corresponding to the mask to 'red'
+        colors[~mask] = 'red'
+
+        # Create 3D plot
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
 
-        ax.scatter(vertices[:, 0], vertices[:, 1], vertices[:, 2],s=15)
+        # Scatter plot, with colors based on the mask
+        ax.scatter(scatter_np[:, 0], scatter_np[:, 1], scatter_np[:, 2], c=colors)
+        # Show axes
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
         plt.show()
+   
+    def displayImageTensor(self, vertices,colors):
+        """display a tensor representing an image
 
+        Args:
+            vertices : tensor of shape [1, N, 3]
+            colors : tensor of shape [1, N, 3]
+        """
+        # Convert tensor to numpy array
+        scatter_np = vertices.detach().cpu().numpy()
+        color_np = colors.detach().cpu().numpy()
+
+        # Reshape to [N, 3] for scatter()
+        scatter_np = np.squeeze(scatter_np, axis=0)
+        color_np = np.squeeze(color_np, axis=0)
+
+        # Normalize color to [0, 1] range
+        color_np = (color_np - color_np.min()) / (color_np.max() - color_np.min())
+
+        # Create 3D plot
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+        ax.scatter(scatter_np[:, 0], scatter_np[:, 1], scatter_np[:, 2], c=color_np)
+
+        plt.show()
         
     def compute_visuals(self):
         with torch.no_grad():
