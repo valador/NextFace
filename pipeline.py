@@ -184,7 +184,6 @@ class Pipeline:
 
         return loss
     
-    #WIP
     # Generate colors for each vertices
     def computeVertexColor(self, diffuseTexture, specularTexture, roughnessTexture, normals, gamma = None):
         """
@@ -209,9 +208,23 @@ class Pipeline:
         # default initiation in faceRecon3D (may need to be update or found)
         gamma = gamma.reshape([batch_size, 3, 9])
         init_lit = torch.tensor([0.8, 0, 0, 0, 0, 0, 0, 0, 0], dtype=torch.float32, device=normals.device)
+        # repeat init_lit for each channel
+        init_lit = init_lit.repeat((batch_size, 3, 1))
         gamma = gamma + init_lit # use init_lit
         gamma = gamma.permute(0, 2, 1)
-        
+        """
+        In the code, Y is a combination of nine terms, each of which is a tensor of the same shape as normals.
+        Each term represents a basis function of the Spherical Harmonics for different bands. 
+        The coefficients a and c are the scaling factors associated with each of these basis functions.
+        After constructing Y, the code calculates r, g, and b, which are the dot product of Y and the
+        corresponding channel of gamma (which contains the SH coefficients for each color channel). 
+        This is effectively evaluating the SH function for each color channel at the points specified 
+        by the normals, resulting in a color for each normal.
+        So, to sum it up, Y tensor is the representation of the Spherical Harmonic basis functions calculated 
+        for the provided normals. 
+        The dot product of Y with the gamma values results in the calculated lighting contribution
+        at each normal direction for each color channel.
+        """
         Y = torch.cat([
              a[0] * c[0] * torch.ones_like(normals[..., :1]).to(self.device),
             -a[1] * c[1] * normals[..., 1:2],
@@ -246,7 +259,9 @@ class Pipeline:
         diffuseTexture_resized = torch.nn.functional.interpolate(diffuseTexture, size=(N, 3), mode='bilinear')
         # [1, N, 3]
         diffuseTexture_resized = torch.squeeze(diffuseTexture_resized, dim=1)
-        # print(diffuseTexture_resized.shape) # should be B N 3 but is B x y 3
+        
+        #for testing purposes, lets make the texture all white
+        # diffuseTexture_resized.fill_(1.0)
         
         face_color = torch.cat([r, g, b], dim=-1) * diffuseTexture_resized  
         # we need to update face_color to match Images
@@ -264,23 +279,33 @@ class Pipeline:
         projMatrix = self.perspectiveProjMatrix(fov,width/height, near, far).to(self.device)
         print(projMatrix.shape)
         print(cameraVertices.shape)
-        #pour tout les vertex -> projMatrix dot vertex
-        
+        # camera space -> clip space
+        # rendre nos vertex homogenes (ils sont deja suposer avoir des w ?)
         ones = torch.ones((cameraVertices.shape[1], 1), device=self.device)
         cameraVertices_homogeneous = torch.cat((cameraVertices[0], ones), dim=-1)  # Now the shape is [N, 4]
-        vertices_in_clip_space = (projMatrix @ cameraVertices_homogeneous.T).T  # Now the shape is [N, 4] again
+        vertices_in_clip_space = (cameraVertices_homogeneous @ projMatrix)  # Now the shape is [N, 4] again
 
-        # 2- clip vertices not seen
-        # clipped_vertices = self.clip(vertices_in_clip_space)
-        vertices_in_screen_space = self.viewport_transform(vertices_in_clip_space, width, height)
-
+        # 2- Normalize de values and remove the values over or under -1 1
+        vertices_in_clip_space /= vertices_in_clip_space[:,-1].reshape(-1,1) #normalize
+        # vertices_in_screen_space = self.viewport_transform(vertices_in_clip_space, width, height)
+        vertices_in_clip_space[(vertices_in_clip_space >1) (vertices_in_clip_space < -1)] = 0 #everything to be clipped = 0
+        
+        projScreenMatrix =  torch.tensor([
+            [width, 0, 0, 0],
+            [0, -height, 0, 0],
+            [0, 0, 1, 0],
+            [width, height, 0, 1]
+        ])
+        vertices_in_screen_space = vertices_in_clip_space @ projScreenMatrix
+        vertices_in_screen_space = vertices_in_screen_space[:,:2] #only keep x and y
+        
         print(vertices_in_screen_space.shape)
         
-        self.displayTensor(vertices_in_screen_space)
+        # self.displayTensor(vertices_in_screen_space)
         
         # Remove vertices marked as np.nan by the clip function
-        mask = ~torch.isnan(vertices_in_screen_space).any(dim=-1)
-        vertices_in_screen_space = vertices_in_screen_space[mask]
+        # mask = ~torch.isnan(vertices_in_screen_space).any(dim=-1)
+        # vertices_in_screen_space = vertices_in_screen_space[mask]
         
         # modify vertices color
         #If every 512 elements along the second dimension have the same color, you can simply take one slice along that dimension:
@@ -289,22 +314,26 @@ class Pipeline:
         verticesColor = verticesColor.mean(dim=1)  # Take the mean along the 512 dimension
         verticesColor = verticesColor.squeeze(0)  # Remove the first dimension
         
+        # RENDER ON IMAGE
         # Ensure vertices and colors are detached and moved to cpu, then convert to numpy
         vertices_np = vertices_in_screen_space.detach().cpu().numpy()
-        colors_np = verticesColor[mask].detach().cpu().numpy()
+        colors_np = verticesColor.detach().cpu().numpy()
+        # colors_np = verticesColor[mask].detach().cpu().numpy()
 
         # Convert your vertices and colors to an image
         # Assuming the vertices are normalized to [0,1] and colors are in the range [0,255]
-        image_data = np.zeros((height, width, 3), dtype=np.uint8)
+        print(vertices_np.shape)
+        print(colors_np.shape)
+        image_data = torch.zeros((height, width, 3), dtype=np.uint8)
         for i, vertex in enumerate(vertices_np):
             x, y = int(vertex[0]), int(vertex[1])
             if 0 <= x < width and 0 <= y < height:
-                image_data[y, x, :] = colors_np[i, :]
-
+                colors_scaled = (colors_np[i, :] * 255).astype(np.uint8)
+                image_data[y, x, :] = colors_scaled
+      
         # Convert the numpy array to a PIL Image
         image = Image.fromarray(image_data)
-
-        # Display the image
+        # # Display the image
         image.show()
         return image
     def perspectiveProjMatrix(self, fov, aspect_ratio, near, far):
@@ -316,12 +345,18 @@ class Pipeline:
         :param near: distance to the near clipping plane.
         :param far: distance to the far clipping plane.
         """
-        f = 1.0 / np.tan(np.radians(fov) / 2)
+        f = 1.0 / torch.tan(torch.deg2rad(fov) / 2)
+        # right = torch.tan(fov/2)
+        # left = -right
+        # top = torch.tan(fov/2)
+        # bottom = -top
+        # 2/(right-left)
+        # 2/(top-bottom)
         projMatrix = torch.tensor([
             [f / aspect_ratio, 0, 0, 0],
             [0, f, 0, 0],
-            [0, 0, (far + near) / (near - far), (2 * far * near) / (near - far)],
-            [0, 0, -1, 0]
+            [0, 0, (far + near) / (far-near), 1],
+            [0, 0, (-2 * near * far) / (far - near), 0]
         ])
         print(projMatrix)
         return projMatrix
