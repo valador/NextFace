@@ -200,7 +200,7 @@ class Pipeline:
         # v_num = face_texture.shape[1]
         a,c = self.sh.a, self.sh.c
         # gamma is given in optimizer.py so to avoid we will just copy the hardcoded value here but REFACTOR TODO
-        gammaInit = 2.2
+        gammaInit = 0.1 # was at 2.2 in Image
         # we init gamma with a bunch of zeros 
         gamma = torch.full((normals.shape[0],27),gammaInit, device=self.device)
         batch_size = normals.shape[0]        
@@ -253,7 +253,7 @@ class Pipeline:
         diffuseTexture_resized = torch.squeeze(diffuseTexture_resized, dim=1)
         
         #for testing purposes, lets make the texture all white
-        diffuseTexture_resized.fill_(1.0)
+        # diffuseTexture_resized.fill_(1.0)
         
         face_color = torch.cat([r, g, b], dim=-1) * diffuseTexture_resized  
         # we need to update face_color to match Images
@@ -264,7 +264,7 @@ class Pipeline:
         width = 256
         height = 256
         fov = torch.tensor([360.0 * torch.atan(width / (2.0 * self.vFocals)) / torch.pi]) # from renderer.py
-        far = 1000
+        far = 100
         near = 0.1
         
         # 1- find projectionMatrix based from camera : camera space -> clip space
@@ -291,7 +291,6 @@ class Pipeline:
         verticesColor = verticesColor.mean(dim=1).squeeze(0) 
         mask = mask.squeeze(0)
         colors_in_screen_space = verticesColor[mask]
-        # colors_in_screen_space = verticesColor[mask].detach().cpu()
 
         # Create an empty image
         image_data = torch.zeros((height, width, 3), dtype=torch.float32, device=self.device)
@@ -303,8 +302,8 @@ class Pipeline:
                 image_data[y, x, :] += colors_in_screen_space[i, :]
 
         # Convert the image_data tensor to a numpy array, and then to a PIL Image
-        image = Image.fromarray(image_data.detach().cpu().numpy().astype('uint8'))
-        image.show()
+        # image = Image.fromarray(image_data.detach().cpu().numpy().astype('uint8'))
+        # image.show()
         # Add batch dimension to image_data
         image_data = image_data.unsqueeze(0)
         #display image to debug
@@ -323,7 +322,7 @@ class Pipeline:
         :param near: distance to the near clipping plane.
         :param far: distance to the far clipping plane.
         """
-        f = 1.0 / torch.tan(torch.deg2rad(fov) / 2)
+        f = 1.0 / torch.tan(torch.deg2rad(fov) / 2.0)
         # right = torch.tan(fov/2)
         # left = -right
         # top = torch.tan(fov/2)
@@ -337,12 +336,44 @@ class Pipeline:
         #     [0, 0, (-2 * near * far) / (far - near), 0]
         # ])
         # or
+        # projMatrix = torch.tensor([
+        #     [f / aspect_ratio, 0, 0, 0],
+        #     [0, f, 0, 0],
+        #     [0, 0, -(far + near) / (far-near), -(2 * far * near) / (far - near)],
+        #     [0, 0, -1, 0]
+        # ])
+        # or
+        # https://www.youtube.com/watch?v=U0_ONQQ5ZNM Perspective projection transformation
         projMatrix = torch.tensor([
             [f / aspect_ratio, 0, 0, 0],
             [0, f, 0, 0],
-            [0, 0, -(far + near) / (far-near), -(2 * far * near) / (far - near)],
-            [0, 0, -1, 0]
+            [0, 0,far/(far-near), -(far*near)/(far-near)],
+            [0, 0, 1, 0]
         ])
+        # or pytorch3d version
+        # k = projectionMatrix transform
+        """
+        fx = focal_length[:, 0]
+            fy = focal_length[:, 1]
+            px = principal_point[:, 0]
+            py = principal_point[:, 1]
+
+            K = [
+                    [fx,   0,   px,   0],
+                    [0,   fy,   py,   0],
+                    [0,    0,    0,   1],
+                    [0,    0,    1,   0],
+            ]
+        self.vFocals = self.config.camFocalLength * torch.ones([n], dtype=torch.float32, device=self.device)
+        self.vShCoeffs = 0.0 * torch.ones([n, self.shBands * self.shBands, 3], dtype=torch.float32, device=self.device)
+        self.vShCoeffs[..., 0, 0] = 0.5
+        self.vShCoeffs[..., 2, 0] = -0.5
+        self.vShCoeffs[..., 1] = self.vShCoeffs[..., 0]
+        self.vShCoeffs[..., 2] = self.vShCoeffs[..., 0]
+
+        texRes = self.morphableModel.getTextureResolution()
+        self.vRoughness = 0.4 * torch.ones([nShape, texRes, texRes, 1], dtype=torch.float32, device=self.device)
+        """
         return projMatrix
     def clip(self, vertices):
         """
@@ -407,31 +438,6 @@ class Pipeline:
         ax.set_zlabel('Z')
         plt.show()
    
-    def displayImageTensor(self, vertices,colors):
-        """display a tensor representing an image
-
-        Args:
-            vertices : tensor of shape [1, N, 3]
-            colors : tensor of shape [1, N, 3]
-        """
-        # Convert tensor to numpy array
-        scatter_np = vertices.detach().cpu().numpy()
-        color_np = colors.detach().cpu().numpy()
-
-        # Reshape to [N, 3] for scatter()
-        scatter_np = np.squeeze(scatter_np, axis=0)
-        color_np = np.squeeze(color_np, axis=0)
-
-        # Normalize color to [0, 1] range
-        color_np = (color_np - color_np.min()) / (color_np.max() - color_np.min())
-
-        # Create 3D plot
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection='3d')
-        ax.scatter(scatter_np[:, 0], scatter_np[:, 1], scatter_np[:, 2], c=color_np)
-
-        plt.show()
-        
     def compute_visuals(self):
         with torch.no_grad():
             input_img_numpy = 255. * self.input_img.detach().cpu().permute(0, 2, 3, 1).numpy()
