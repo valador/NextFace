@@ -113,7 +113,8 @@ class Pipeline:
         :param vertexBased: if True we render by vertex instead of ray tracing
         :return: ray traced images [n, resX, resY, 4]
         '''
-        if cameraVerts is None:
+        
+        if cameraVerts is None :
             vertices, diffAlbedo, specAlbedo = self.morphableModel.computeShapeAlbedo(self.vShapeCoeff, self.vExpCoeff, self.vAlbedoCoeff)
             cameraVerts = self.camera.transformVertices(vertices, self.vTranslation, self.vRotation)
 
@@ -142,10 +143,12 @@ class Pipeline:
         if vertexBased:
             # do we take in account rotation when computing normals ?
             # coeff -> face shape -> face shape rotated -> face vertex (based on camera) -> normals (based on face vertex) -> rotated normals *
-            vertexColors = self.computeVertexColor(diffuseTextures, specularTextures, roughnessTextures, normals)
+            diffAlbedo = self.morphableModel.computeDiffuseAlbedo(self.vAlbedoCoeff)
+            specAlbedo = self.morphableModel.computeSpecularAlbedo(self.vAlbedoCoeff)
+                
+            vertexColors = self.computeVertexColor(diffAlbedo, specAlbedo, roughnessTextures, normals)
             # face_shape -> self.computeShape() -> vertices (if no camera) or cameraVerts (if  camera)
-            images = self.computeVertexImage(cameraVerts, vertexColors, debug=True)
-            
+            images = self.computeVertexImage(cameraVerts, vertexColors, debug=False)
         else:
             scenes = self.renderer.buildScenes(cameraVerts, self.faces32, normals, self.uvMap, diffuseTextures, specularTextures, torch.clamp(roughnessTextures, 1e-20, 10.0), self.vFocals, envMaps)
             if renderAlbedo:
@@ -185,31 +188,39 @@ class Pipeline:
         return loss
     
     # Generate colors for each vertices
-    def computeVertexColor(self, diffuseTexture, specularTexture, roughnessTexture, normals, gamma = None):
+    def computeVertexColor(self, diffAlbedo, specAlbedo, roughnessTexture, normals, gamma = None):
         """
         Return:
             face_color       -- torch.tensor, size (B, N, 3), range (0, 1.)
 
         Parameters:
-            face_texture_diffuse     -- torch.tensor, size (B, N, 3), from texture model, range (0, 1.)
-            face_texture_specular     -- torch.tensor, size (B, N, 3), from texture model, range (0, 1.)
-            face_texture_roughness     -- torch.tensor, size (B, N, 3), from texture model, range (0, 1.)
+            diffAlbedo     -- torch.tensor, size (B, N, 3) 
+            specAlbedo     -- torch.tensor, size (B, N, 3)
+            roughnessTexture     -- torch.tensor, size (B, W, H, 3), from texture model, range (0, 1.)
             normals        -- torch.tensor, size (B, N, 3), rotated face normal
             gamma            -- torch.tensor, size (B, 27), SH coeffs
         """
         # v_num = face_texture.shape[1]
         a,c = self.sh.a, self.sh.c
         # gamma is given in optimizer.py so to avoid we will just copy the hardcoded value here but REFACTOR TODO
-        gammaInit = 0.1 # was at 2.2 in Image
+        gammaInit = 2.2 # was at 2.2 in Image GAMMA CORRECTION 
         # we init gamma with a bunch of zeros 
-        gamma = torch.full((normals.shape[0],27),gammaInit, device=self.device)
+        gamma = torch.full((normals.shape[0],27),0.0, device=self.device)
         batch_size = normals.shape[0]        
         # default initiation in faceRecon3D (may need to be update or found)
         gamma = gamma.reshape([batch_size, 3, 9])
-        init_lit = torch.tensor([0.8, 0, 0, 0, 0, 0, 0, 0, 0], dtype=torch.float32, device=normals.device)
+        # init_lit = torch.tensor([0.8, 0, 0, 0, 0, 0, 0, 0, 0], dtype=torch.float32, device=normals.device)
         # repeat init_lit for each channel
-        init_lit = init_lit.repeat((batch_size, 3, 1))
-        gamma = gamma + init_lit # use init_lit
+        # init_lit = init_lit.repeat((batch_size, 3, 1))
+        
+        # gamma = gamma + init_lit # use init_lit
+        # Instead of init_lit, use the first 9 coeffs from each channel of self.vShCoeffs
+        """9 coefficients for each channel (RGB) are typically used in rendering with SH lighting (3 bands).
+        You probably only want to use the first 9 coefficients from each channel in self.vShCoeffs for the addition operation
+        """
+        # this operation takes the first 9 elements along the second dimension of self.vShCoeffs tensor, for all elements along the first and third dimensions.
+        sh = self.vShCoeffs[:, :9, :] # keep only the 9 first elements [1, 81, 3] -> [1, 9, 3]
+        gamma = gamma + sh.permute(0, 2, 1) # premute so that Sh [1, 9, 3] becomes [1, 3, 9]
         gamma = gamma.permute(0, 2, 1)
         """
         In the code, Y is a combination of nine terms, each of which is a tensor of the same shape as normals.
@@ -238,20 +249,10 @@ class Pipeline:
         r = Y @ gamma[..., :1]
         g = Y @ gamma[..., 1:2]
         b = Y @ gamma[..., 2:]
-              
-        # can i convert texture from B x,y 3 to be linear ? where N is vertex position
-        N = normals.shape[1]
-        # Reshape diffuseTexture to [1, 262144, 3]
-        # Resize diffuseTexture_reshaped to match the size of Y
-        #[ 1, x, N, 3]
-        diffuseTexture_resized = torch.nn.functional.interpolate(diffuseTexture, size=(N, 3), mode='bilinear')
-        # [1, N, 3]
-        diffuseTexture_resized = torch.squeeze(diffuseTexture_resized, dim=1)
-        #for testing purposes, lets make the texture all white
-        # diffuseTexture_resized.fill_(1.0)
+        face_color = diffAlbedo * torch.cat([r, g, b], dim=-1)
+        face_color = torch.clamp(face_color, min=1e-8)  # Replace zeros and negative numbers with a small positive number
+        face_color = face_color.pow(1.0 / gammaInit)
         
-        face_color = torch.cat([r, g, b], dim=-1) * diffuseTexture_resized  
-        # we need to update face_color to match Images
         return face_color
     # predict face and mask
     def computeVertexImage(self, cameraVertices, verticesColor, debug=False) : 
@@ -282,8 +283,11 @@ class Pipeline:
         vertices_in_screen_space[..., 1] = (vertices_in_clip_space[..., 1] + 1) / 2 * height
 
         # Vertices color manipulation
-        verticesColor = verticesColor.mean(dim=1).squeeze(0) 
+        verticesColor = verticesColor.squeeze(0)#mean(dim=1)# 
         mask = mask.squeeze(0)
+        # print("masking")
+        # print(verticesColor.shape)
+        # print(mask.shape)
         colors_in_screen_space = verticesColor[mask]
 
         # Create an empty image
@@ -353,7 +357,6 @@ class Pipeline:
         #     [0, 0, -1, 0]
         # ])
         return projMatrix
-
     # draw the visuals
     def displayTensor(self, vertices):
         """util function to display tensors
@@ -385,8 +388,7 @@ class Pipeline:
         ax.set_xlabel('X')
         ax.set_ylabel('Y')
         ax.set_zlabel('Z')
-        plt.show()
-    
+        plt.show()  
     def displayTensorInPolyscope(self,vertices):
         """display a point cloud 
 
@@ -421,9 +423,7 @@ class Pipeline:
         ps_cloud.add_color_quantity("colors",colors)
         ps_cloud.add_vector_quantity("normals",normals,enabled=True)
       
-        ps.show()
-        
-          
+        ps.show()   
     def compute_visuals(self):
         with torch.no_grad():
             input_img_numpy = 255. * self.input_img.detach().cpu().permute(0, 2, 3, 1).numpy()
