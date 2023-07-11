@@ -157,7 +157,27 @@ class Pipeline:
                 images = self.renderer.render(scenes)
                 
         return images
-
+    def renderVertexBased(self, cameraVerts = None, diffuseAlbedo = None, specularAlbedo = None, ):
+        '''
+        render the vertices in an image given camera vertices and corresponding albedos
+        :param cameraVerts: camera vertices tensor [n, verticesNumber, 3]
+        :param diffuseAlbedo: diffuse textures tensor [n, texRes, texRes, 3]
+        :param specularAlbedo: specular textures tensor [n, texRes, texRes, 3]
+        :return: ray traced images [n, resX, resY, 4]
+        '''
+        if cameraVerts is None or diffuseAlbedo is None:
+            vertices, diffuseAlbedo, specularAlbedo = self.morphableModel.computeShapeAlbedo(self.vShapeCoeff, self.vExpCoeff, self.vAlbedoCoeff)
+            cameraVerts = self.camera.transformVertices(vertices, self.vTranslation, self.vRotation)
+        #compute normals
+        normals = self.morphableModel.meshNormals.computeNormals(cameraVerts)
+        assert (cameraVerts.dim() == 3 and cameraVerts.shape[-1] == 3)
+        
+        vertexColors = self.computeVertexColor(diffuseAlbedo, specularAlbedo, normals)
+        # face_shape -> self.computeShape() -> vertices (if no camera) or cameraVerts (if  camera)
+        images = self.computeVertexImage(cameraVerts, vertexColors, debug=False)
+                
+        return images
+    
     def landmarkLoss(self, cameraVertices, landmarks, focals, cameraCenters,  debugDir = None):
         '''
         calculate scalar loss between vertices in camera space and 2d landmarks pixels
@@ -188,7 +208,7 @@ class Pipeline:
         return loss
     
     # Generate colors for each vertices
-    def computeVertexColor(self, diffAlbedo, specAlbedo, roughnessTexture, normals, gamma = None):
+    def computeVertexColor(self, diffAlbedo, specAlbedo, normals, roughnessTexture = None,  gamma = None):
         """
         Return:
             face_color       -- torch.tensor, size (B, N, 3), range (0, 1.)
