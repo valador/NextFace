@@ -387,13 +387,13 @@ class Optimizer:
                 ext = '.exr'
             saveImage(envMaps[i], outputDir + '/envMap_' + str(i) + ext)
 
-            #saveImage(diffuseAlbedo[self.getTextureIndex(i)],  outputDir + prefix +  'diffuse_' + str(self.getTextureIndex(i)) + '.png')
-            #saveImage(specularAlbedo[self.getTextureIndex(i)], outputDir + prefix + 'specular_' + str(self.getTextureIndex(i)) + '.png')
-            #saveImage(roughnessAlbedo[self.getTextureIndex(i)], outputDir + prefix + 'roughness_' + str(self.getTextureIndex(i)) + '.png')
-            #saveImage(illum[i], outputDir + prefix + 'illumination_' + str(i) + '.png')
-            #saveImage(images[i], outputDir + prefix + 'finalReconstruction_' + str(i) + '.png')
+            saveImage(diffuseAlbedo[self.getTextureIndex(i)],  outputDir + prefix +  'diffuse_' + str(self.getTextureIndex(i)) + '.png')
+            saveImage(specularAlbedo[self.getTextureIndex(i)], outputDir + prefix + 'specular_' + str(self.getTextureIndex(i)) + '.png')
+            saveImage(roughnessAlbedo[self.getTextureIndex(i)], outputDir + prefix + 'roughness_' + str(self.getTextureIndex(i)) + '.png')
+            saveImage(illum[i], outputDir + prefix + 'illumination_' + str(i) + '.png')
+            saveImage(images[i], outputDir + prefix + 'finalReconstruction_' + str(i) + '.png')
             overlay = overlayImage(inputTensor[i], images[i])
-            #saveImage(overlay, outputDir + '/overlay_' + str(i) + '.png')
+            saveImage(overlay, outputDir + '/overlay_' + str(i) + '.png')
 
             renderAll = torch.cat([torch.cat([inputTensor[i], torch.ones_like(images[i])[..., 3:]], dim = -1),
                            torch.cat([overlay.to(self.device), torch.ones_like(images[i])[..., 3:]], dim = -1),

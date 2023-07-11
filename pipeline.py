@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import torchvision.transforms as transforms
 from PIL import Image
 from mpl_toolkits.mplot3d import Axes3D
-
+import polyscope as ps
 class Pipeline:
 
     def __init__(self,  config):
@@ -140,12 +140,12 @@ class Pipeline:
         assert (diffuseTextures.shape[0] == specularTextures.shape[0] == roughnessTextures.shape[0])
 
         if vertexBased:
-            # gamma ?
             # do we take in account rotation when computing normals ?
             # coeff -> face shape -> face shape rotated -> face vertex (based on camera) -> normals (based on face vertex) -> rotated normals *
             vertexColors = self.computeVertexColor(diffuseTextures, specularTextures, roughnessTextures, normals)
             # face_shape -> self.computeShape() -> vertices (if no camera) or cameraVerts (if  camera)
-            images = self.computeVertexImage(cameraVerts, vertexColors)
+            images = self.computeVertexImage(cameraVerts, vertexColors, debug=True)
+            
         else:
             scenes = self.renderer.buildScenes(cameraVerts, self.faces32, normals, self.uvMap, diffuseTextures, specularTextures, torch.clamp(roughnessTextures, 1e-20, 10.0), self.vFocals, envMaps)
             if renderAlbedo:
@@ -238,29 +238,9 @@ class Pipeline:
         r = Y @ gamma[..., :1]
         g = Y @ gamma[..., 1:2]
         b = Y @ gamma[..., 2:]
-        # Y = torch.cat([
-        # torch.ones_like(normals[..., :1]),
-        # normals[..., 1:2],
-        # normals[..., 2:],
-        # normals[..., :1] * normals[..., 1:2],
-        # normals[..., :1] * normals[..., 2:],
-        # normals[..., 1:2] * normals[..., 2:],
-        # normals[..., :1] ** 2 - normals[..., 1:2] ** 2,
-        # 3 * normals[..., 2:] ** 2 - 1,
-        # normals[..., :1] ** 2 - normals[..., 1:2] ** 2
-        # ], dim=-1)
-
-        # # Compute the dot product of Y and gamma for each color channel
-        # r = torch.matmul(Y, gamma[..., 0])
-        # g = torch.matmul(Y, gamma[..., 1])
-        # b = torch.matmul(Y, gamma[..., 2])
-        # WIP not sure about that one 
-        # bd = face_texture_diffuse 
-        # bs = face_texture_roughness * face_texture_specular
-        
+              
         # can i convert texture from B x,y 3 to be linear ? where N is vertex position
         N = normals.shape[1]
-        # print(N)
         # Reshape diffuseTexture to [1, 262144, 3]
         # Resize diffuseTexture_reshaped to match the size of Y
         #[ 1, x, N, 3]
@@ -274,7 +254,7 @@ class Pipeline:
         # we need to update face_color to match Images
         return face_color
     # predict face and mask
-    def computeVertexImage(self, cameraVertices, verticesColor) : 
+    def computeVertexImage(self, cameraVertices, verticesColor, debug=False) : 
         #since we already have the cameraVertices
         width = 256
         height = 256
@@ -291,7 +271,6 @@ class Pipeline:
 
         # Normalize the vertices (divide by W) and put them in cartesian coordinates
         vertices_in_clip_space = vertices_in_clip_space[..., :3] / vertices_in_clip_space[..., 3:]
-        self.displayTensor(vertices_in_clip_space)
         # Ignore vertices where x, y,  > 1 or < -1
         mask = torch.abs(vertices_in_clip_space[:, :, :2]) <= 1.0  # Only consider x and y coordinates
         mask = mask.all(dim=-1)  # All x and y must satisfy the condition
@@ -316,18 +295,18 @@ class Pipeline:
                 # Add color to the pixel
                 image_data[y, x, :] += colors_in_screen_space[i, :]
 
-        # Convert the image_data tensor to a numpy array, and then to a PIL Image
-        # image = Image.fromarray(image_data.detach().cpu().numpy().astype('uint8'))
-        # image.show()
         # Add batch dimension to image_data
         image_data = image_data.unsqueeze(0)
-        #display image to debug
-        # self.displayImageTensor(image_data) 
         # add alpha channel to rgb
         alpha_channel = torch.ones((1, 256, 256, 1)).to(self.device)  # Ensure it's on the same device as your image
         image_data = torch.cat((image_data, alpha_channel), dim=-1)  # Append alpha channel
+        
+        if debug:            
+            normals = self.morphableModel.meshNormals.computeNormals(cameraVertices)
+            self.displayTensorColorAndNormals(vertices_in_screen_space,verticesColor,normals)
 
         return image_data
+    
     def perspectiveProjMatrix(self, fov, aspect_ratio, near, far):
         """
         Create a perspective projection matrix.
@@ -407,7 +386,44 @@ class Pipeline:
         ax.set_ylabel('Y')
         ax.set_zlabel('Z')
         plt.show()
-   
+    
+    def displayTensorInPolyscope(self,vertices):
+        """display a point cloud 
+
+        Args:
+            vertices (N x 3 tensor): vertices that we want to display
+        """
+        # Convert tensor to numpy array
+        scatter_np = vertices.detach().cpu().numpy()
+        # Reshape scatter_np to [N, 3] for scatter()
+        scatter_np = np.squeeze(scatter_np, axis=0) 
+        ps.init()
+        # `my_points` is a Nx3 numpy array
+        ps.register_point_cloud("my vertices", scatter_np)
+        ps.show()
+    def displayTensorColorAndNormals(self, verticesPosition, verticesColor, verticesNormals):
+        """
+        verticesPosition (N, 3) : vertices to display
+        verticesColor (N, 3): color of vertices
+        verticesNormals (1, N, 3): normals of each vertices
+        
+        """  
+         # Convert tensor to numpy array
+        position = verticesPosition.detach().cpu().numpy()
+        colors = verticesColor.detach().cpu().numpy()
+        normals = verticesNormals.detach().cpu().numpy()
+        # Reshape colors and normals to [N, 3] for scatter()
+        normals = np.squeeze(normals, axis=0) 
+        
+        ps.init()
+        # use volume mesh
+        ps_cloud = ps.register_point_cloud("points",position, enabled=True)
+        ps_cloud.add_color_quantity("colors",colors)
+        ps_cloud.add_vector_quantity("normals",normals,enabled=True)
+      
+        ps.show()
+        
+          
     def compute_visuals(self):
         with torch.no_grad():
             input_img_numpy = 255. * self.input_img.detach().cpu().permute(0, 2, 3, 1).numpy()
