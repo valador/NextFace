@@ -238,6 +238,22 @@ class Pipeline:
         r = Y @ gamma[..., :1]
         g = Y @ gamma[..., 1:2]
         b = Y @ gamma[..., 2:]
+        # Y = torch.cat([
+        # torch.ones_like(normals[..., :1]),
+        # normals[..., 1:2],
+        # normals[..., 2:],
+        # normals[..., :1] * normals[..., 1:2],
+        # normals[..., :1] * normals[..., 2:],
+        # normals[..., 1:2] * normals[..., 2:],
+        # normals[..., :1] ** 2 - normals[..., 1:2] ** 2,
+        # 3 * normals[..., 2:] ** 2 - 1,
+        # normals[..., :1] ** 2 - normals[..., 1:2] ** 2
+        # ], dim=-1)
+
+        # # Compute the dot product of Y and gamma for each color channel
+        # r = torch.matmul(Y, gamma[..., 0])
+        # g = torch.matmul(Y, gamma[..., 1])
+        # b = torch.matmul(Y, gamma[..., 2])
         # WIP not sure about that one 
         # bd = face_texture_diffuse 
         # bs = face_texture_roughness * face_texture_specular
@@ -251,7 +267,6 @@ class Pipeline:
         diffuseTexture_resized = torch.nn.functional.interpolate(diffuseTexture, size=(N, 3), mode='bilinear')
         # [1, N, 3]
         diffuseTexture_resized = torch.squeeze(diffuseTexture_resized, dim=1)
-        
         #for testing purposes, lets make the texture all white
         # diffuseTexture_resized.fill_(1.0)
         
@@ -276,7 +291,7 @@ class Pipeline:
 
         # Normalize the vertices (divide by W) and put them in cartesian coordinates
         vertices_in_clip_space = vertices_in_clip_space[..., :3] / vertices_in_clip_space[..., 3:]
-        # self.displayTensor(vertices_in_clip_space)
+        self.displayTensor(vertices_in_clip_space)
         # Ignore vertices where x, y,  > 1 or < -1
         mask = torch.abs(vertices_in_clip_space[:, :, :2]) <= 1.0  # Only consider x and y coordinates
         mask = mask.all(dim=-1)  # All x and y must satisfy the condition
@@ -323,88 +338,43 @@ class Pipeline:
         :param far: distance to the far clipping plane.
         """
         f = 1.0 / torch.tan(torch.deg2rad(fov) / 2.0)
-        # right = torch.tan(fov/2)
-        # left = -right
-        # top = torch.tan(fov/2)
-        # bottom = -top
-        # 2/(right-left)
-        # 2/(top-bottom)
-        # projMatrix = torch.tensor([
-        #     [f / aspect_ratio, 0, 0, 0],
-        #     [0, f, 0, 0],
-        #     [0, 0, (far + near) / (far-near), 1],
-        #     [0, 0, (-2 * near * far) / (far - near), 0]
-        # ])
-        # or
-        # projMatrix = torch.tensor([
-        #     [f / aspect_ratio, 0, 0, 0],
-        #     [0, f, 0, 0],
-        #     [0, 0, -(far + near) / (far-near), -(2 * far * near) / (far - near)],
-        #     [0, 0, -1, 0]
-        # ])
-        # or
-        # https://www.youtube.com/watch?v=U0_ONQQ5ZNM Perspective projection transformation
+        # right handed matrix
         projMatrix = torch.tensor([
             [f / aspect_ratio, 0, 0, 0],
             [0, f, 0, 0],
-            [0, 0,far/(far-near), -(far*near)/(far-near)],
+            [0, 0, far/(far-near), -(far*near)/(far-near)],
             [0, 0, 1, 0]
         ])
-        # or pytorch3d version
-        # k = projectionMatrix transform
-        """
-        fx = focal_length[:, 0]
-            fy = focal_length[:, 1]
-            px = principal_point[:, 0]
-            py = principal_point[:, 1]
-
-            K = [
-                    [fx,   0,   px,   0],
-                    [0,   fy,   py,   0],
-                    [0,    0,    0,   1],
-                    [0,    0,    1,   0],
-            ]
-        self.vFocals = self.config.camFocalLength * torch.ones([n], dtype=torch.float32, device=self.device)
-        self.vShCoeffs = 0.0 * torch.ones([n, self.shBands * self.shBands, 3], dtype=torch.float32, device=self.device)
-        self.vShCoeffs[..., 0, 0] = 0.5
-        self.vShCoeffs[..., 2, 0] = -0.5
-        self.vShCoeffs[..., 1] = self.vShCoeffs[..., 0]
-        self.vShCoeffs[..., 2] = self.vShCoeffs[..., 0]
-
-        texRes = self.morphableModel.getTextureResolution()
-        self.vRoughness = 0.4 * torch.ones([nShape, texRes, texRes, 1], dtype=torch.float32, device=self.device)
-        """
+        # or flip on x
+        # projMatrix = torch.tensor([
+        #     [-f / aspect_ratio, 0, 0, 0],
+        #     [0, f, 0, 0],
+        #     [0, 0, far/(far-near), -(far*near)/(far-near)],
+        #     [0, 0, 1, 0]
+        # ])
+        # or flip on y axis
+        # projMatrix = torch.tensor([
+        #     [f / aspect_ratio, 0, 0, 0],
+        #     [0, -f, 0, 0],
+        #     [0, 0, far/(far-near), -(far*near)/(far-near)],
+        #     [0, 0, 1, 0]
+        # ])
+        # or flip on z axis
+        # projMatrix = torch.tensor([
+        #     [f / aspect_ratio, 0, 0, 0],
+        #     [0, f, 0, 0],
+        #     [0, 0, -far/(far-near), (far*near)/(far-near)],
+        #     [0, 0, -1, 0]
+        # ])
+        # left handed
+        # projMatrix = torch.tensor([
+        #     [f / aspect_ratio, 0, 0, 0],
+        #     [0, -f, 0, 0],
+        #     [0, 0, -far/(far-near), -(far*near)/(far-near)],
+        #     [0, 0, -1, 0]
+        # ])
         return projMatrix
-    def clip(self, vertices):
-        """
-        Clip vertices in clip space.
-        
-        :param vertices: Nx4 matrix of vertices in homogeneous coordinates.
-        :return: Nx4 matrix of vertices, vertices outside viewing frustum are replaced with [np.nan, np.nan, np.nan, np.nan].
-        """
-        w = vertices[:, 3:4]
-        mask = (abs(vertices[:, :3]) <= w).all(axis=-1, keepdims=True)
-        # adjust the dimensions of your mask so that it's broadcastable to the tensor's shape.
-        mask = mask.repeat(1, vertices.shape[1])
-        vertices_out = vertices.clone()
-        vertices_out[~mask] = np.nan
-        return vertices_out
-    def viewport_transform(self, vertices, width, height):
-        """
-        Transform vertices from clip space to screen space.
-        
-        :param vertices: Nx4 matrix of vertices in homogeneous coordinates.
-        :param width: Width of the viewport in pixels.
-        :param height: Height of the viewport in pixels.
-        :return: Nx3 matrix of vertices in screen space.
-        """
-        # Perspective divide: converting from homogeneous coordinates to 3D coordinates
-        vertices_out = vertices / vertices[:, 3:]
 
-        # Viewport transformation
-        vertices_out[:, 0] = (vertices_out[:, 0] + 1) * 0.5 * width
-        vertices_out[:, 1] = (vertices_out[:, 1] + 1) * 0.5 * height
-        return vertices_out
     # draw the visuals
     def displayTensor(self, vertices):
         """util function to display tensors
