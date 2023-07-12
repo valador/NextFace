@@ -145,7 +145,7 @@ class Pipeline:
             # coeff -> face shape -> face shape rotated -> face vertex (based on camera) -> normals (based on face vertex) -> rotated normals *
             diffAlbedo = self.morphableModel.computeDiffuseAlbedo(self.vAlbedoCoeff)
             specAlbedo = self.morphableModel.computeSpecularAlbedo(self.vAlbedoCoeff)
-                
+            
             vertexColors = self.computeVertexColor(diffAlbedo, specAlbedo, roughnessTextures, normals)
             # face_shape -> self.computeShape() -> vertices (if no camera) or cameraVerts (if  camera)
             images = self.computeVertexImage(cameraVerts, vertexColors, debug=False)

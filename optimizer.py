@@ -201,7 +201,6 @@ class Optimizer:
         optimizer = torch.optim.Adam(params)
         losses = []
 
-        #for iter in range(2000):
         for iter in tqdm.tqdm(range(self.config.iterStep1)):
             optimizer.zero_grad()
             vertices = self.pipeline.computeShape()
@@ -213,10 +212,22 @@ class Optimizer:
             losses.append(loss.item())
             if self.verbose:
                 print(iter, '=>', loss.item())
+            if self.config.debugFrequency > 0 and iter % self.config.debugFrequency == 0:
+                    # self.debugFrame(smoothedImage, inputTensor, diffuseTextures, specularTextures, self.pipeline.vRoughness, self.debugDir + 'debug1_iter' + str(iter))
+                    # also save obj
+                    cameraNormals = self.pipeline.morphableModel.computeNormals(cameraVertices) # only used of obj (might be too slow)
+                    saveObj(self.debugDir + '/mesh' + 'debug1_iter' + str(iter)+'.obj',
+                            'material' + str(iter) + '.mtl',
+                            cameraVertices[0],
+                            self.pipeline.faces32,
+                            cameraNormals[0],
+                            self.pipeline.morphableModel.uvMap,
+                            self.debugDir + 'diffuseMap_' + str(self.getTextureIndex(0)) + '.png')
 
         self.plotLoss(losses, 0, self.outputDir + 'checkpoints/stage1_loss.png')
         self.saveParameters(self.outputDir + 'checkpoints/stage1_output.pickle')
-
+        
+                    
     def runStep2(self):
         print("2/3 => Optimizing shape, statistical albedos, expression, head pose and scene light...", file=sys.stderr, flush=True)
         torch.set_grad_enabled(True)
@@ -388,46 +399,47 @@ class Optimizer:
         images = self.pipeline.renderVertexBased(None, diffAlbedo, specAlbedo)
 
         # usually we render with pyredner and there is a difference, in our case since our vertex-based implementation has only one type of render, this will just give us the same image every times
-        diffuseAlbedo = self.pipeline.render(diffuseTextures=vDiffTextures, renderAlbedo=True, vertexBased=True)
-        specularAlbedo = self.pipeline.render(diffuseTextures=vSpecTextures, renderAlbedo=True, vertexBased=True)
-        roughnessAlbedo = self.pipeline.render(diffuseTextures=vRoughTextures.repeat(1, 1, 1, 3), renderAlbedo=True, vertexBased=True)
-        illum = self.pipeline.render(diffuseTextures=torch.ones_like(vDiffTextures), specularTextures=torch.zeros_like(vDiffTextures),vertexBased=True)
+        # TODO a renderVertexBased Albedo version that takes this variation
+        # diffuseAlbedo = self.pipeline.render(diffuseTextures=vDiffTextures, renderAlbedo=True, vertexBased=True)
+        # specularAlbedo = self.pipeline.render(diffuseTextures=vSpecTextures, renderAlbedo=True, vertexBased=True)
+        # roughnessAlbedo = self.pipeline.render(diffuseTextures=vRoughTextures.repeat(1, 1, 1, 3), renderAlbedo=True, vertexBased=True)
+        # illum = self.pipeline.render(diffuseTextures=torch.ones_like(vDiffTextures), specularTextures=torch.zeros_like(vDiffTextures),vertexBased=True)
 
-        for i in range(diffuseAlbedo.shape[0]):
-            saveObj(outputDir + prefix + '/mesh' + str(i) + '.obj',
-                    'material' + str(i) + '.mtl',
-                    cameraVerts[i],
-                    self.pipeline.faces32,
-                    cameraNormals[i],
-                    self.pipeline.morphableModel.uvMap,
-                    prefix + 'diffuseMap_' + str(self.getTextureIndex(i)) + '.png')
+        # for i in range(diffuseAlbedo.shape[0]):
+        #     saveObj(outputDir + prefix + '/mesh' + str(i) + '.obj',
+        #             'material' + str(i) + '.mtl',
+        #             cameraVerts[i],
+        #             self.pipeline.faces32,
+        #             cameraNormals[i],
+        #             self.pipeline.morphableModel.uvMap,
+        #             prefix + 'diffuseMap_' + str(self.getTextureIndex(i)) + '.png')
 
-            envMaps = self.pipeline.sh.toEnvMap(self.pipeline.vShCoeffs, self.config.smoothSh) #smooth
-            ext = '.png'
-            if self.config.saveExr:
-                ext = '.exr'
-            saveImage(envMaps[i], outputDir + '/envMap_' + str(i) + ext)
+        #     envMaps = self.pipeline.sh.toEnvMap(self.pipeline.vShCoeffs, self.config.smoothSh) #smooth
+        #     ext = '.png'
+        #     if self.config.saveExr:
+        #         ext = '.exr'
+        #     saveImage(envMaps[i], outputDir + '/envMap_' + str(i) + ext)
 
-            saveImage(diffuseAlbedo[self.getTextureIndex(i)],  outputDir + prefix +  'diffuse_' + str(self.getTextureIndex(i)) + '.png')
-            saveImage(specularAlbedo[self.getTextureIndex(i)], outputDir + prefix + 'specular_' + str(self.getTextureIndex(i)) + '.png')
-            saveImage(roughnessAlbedo[self.getTextureIndex(i)], outputDir + prefix + 'roughness_' + str(self.getTextureIndex(i)) + '.png')
-            saveImage(illum[i], outputDir + prefix + 'illumination_' + str(i) + '.png')
-            saveImage(images[i], outputDir + prefix + 'finalReconstruction_' + str(i) + '.png')
-            overlay = overlayImage(inputTensor[i], images[i])
-            saveImage(overlay, outputDir + '/overlay_' + str(i) + '.png')
+        #     saveImage(diffuseAlbedo[self.getTextureIndex(i)],  outputDir + prefix +  'diffuse_' + str(self.getTextureIndex(i)) + '.png')
+        #     saveImage(specularAlbedo[self.getTextureIndex(i)], outputDir + prefix + 'specular_' + str(self.getTextureIndex(i)) + '.png')
+        #     saveImage(roughnessAlbedo[self.getTextureIndex(i)], outputDir + prefix + 'roughness_' + str(self.getTextureIndex(i)) + '.png')
+        #     saveImage(illum[i], outputDir + prefix + 'illumination_' + str(i) + '.png')
+        #     saveImage(images[i], outputDir + prefix + 'finalReconstruction_' + str(i) + '.png')
+        #     overlay = overlayImage(inputTensor[i], images[i])
+        #     saveImage(overlay, outputDir + '/overlay_' + str(i) + '.png')
 
-            renderAll = torch.cat([torch.cat([inputTensor[i], torch.ones_like(images[i])[..., 3:]], dim = -1),
-                           torch.cat([overlay.to(self.device), torch.ones_like(images[i])[..., 3:]], dim = -1),
-                           images[i],
-                           illum[i],
-                           diffuseAlbedo[self.getTextureIndex(i)],
-                           specularAlbedo[self.getTextureIndex(i)],
-                          roughnessAlbedo[self.getTextureIndex(i)]], dim=1)
-            saveImage(renderAll, outputDir + '/render_' + str(i) + '.png')
+        #     renderAll = torch.cat([torch.cat([inputTensor[i], torch.ones_like(images[i])[..., 3:]], dim = -1),
+        #                    torch.cat([overlay.to(self.device), torch.ones_like(images[i])[..., 3:]], dim = -1),
+        #                    images[i],
+        #                    illum[i],
+        #                    diffuseAlbedo[self.getTextureIndex(i)],
+        #                    specularAlbedo[self.getTextureIndex(i)],
+        #                   roughnessAlbedo[self.getTextureIndex(i)]], dim=1)
+        #     saveImage(renderAll, outputDir + '/render_' + str(i) + '.png')
 
-            saveImage(vDiffTextures[self.getTextureIndex(i)], outputDir + prefix + 'diffuseMap_' + str(self.getTextureIndex(i)) + '.png')
-            saveImage(vSpecTextures[self.getTextureIndex(i)], outputDir + prefix + 'specularMap_' + str(self.getTextureIndex(i)) + '.png')
-            saveImage(vRoughTextures[self.getTextureIndex(i)].repeat(1, 1, 3), outputDir + prefix  + 'roughnessMap_' + str(self.getTextureIndex(i)) + '.png')
+            # saveImage(vDiffTextures[self.getTextureIndex(i)], outputDir + prefix + 'diffuseMap_' + str(self.getTextureIndex(i)) + '.png')
+            # saveImage(vSpecTextures[self.getTextureIndex(i)], outputDir + prefix + 'specularMap_' + str(self.getTextureIndex(i)) + '.png')
+            # saveImage(vRoughTextures[self.getTextureIndex(i)].repeat(1, 1, 3), outputDir + prefix  + 'roughnessMap_' + str(self.getTextureIndex(i)) + '.png')
 
     def run(self, imagePathOrDir, sharedIdentity = False, checkpoint = None, doStep1 = True, doStep2 = True, doStep3 = True):
         '''
