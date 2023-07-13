@@ -157,7 +157,7 @@ class Pipeline:
                 images = self.renderer.render(scenes)
                 
         return images
-    def renderVertexBased(self, cameraVerts = None, diffuseAlbedo = None, specularAlbedo = None, ):
+    def renderVertexBased(self, cameraVerts = None, diffuseAlbedo = None, specularAlbedo = None, albedoOnly= False, lightingOnly=False ):
         '''
         render the vertices in an image given camera vertices and corresponding albedos
         :param cameraVerts: camera vertices tensor [n, verticesNumber, 3]
@@ -172,7 +172,7 @@ class Pipeline:
         normals = self.morphableModel.meshNormals.computeNormals(cameraVerts)
         assert (cameraVerts.dim() == 3 and cameraVerts.shape[-1] == 3)
         
-        vertexColors = self.computeVertexColor(diffuseAlbedo, specularAlbedo, normals)
+        vertexColors = self.computeVertexColor(diffuseAlbedo, specularAlbedo, normals,albedoOnly=albedoOnly,lightingOnly=lightingOnly)
         # face_shape -> self.computeShape() -> vertices (if no camera) or cameraVerts (if  camera)
         images = self.computeVertexImage(cameraVerts, vertexColors, debug=False)
                 
@@ -208,7 +208,7 @@ class Pipeline:
         return loss
     
     # Generate colors for each vertices
-    def computeVertexColor(self, diffAlbedo, specAlbedo, normals, roughnessTexture = None,  gamma = None):
+    def computeVertexColor(self, diffAlbedo, specAlbedo, normals, roughnessTexture = None,  gamma = None, albedoOnly=False, lightingOnly=False):
         """
         Return:
             face_color       -- torch.tensor, size (B, N, 3), range (0, 1.)
@@ -220,6 +220,9 @@ class Pipeline:
             normals        -- torch.tensor, size (B, N, 3), rotated face normal
             gamma            -- torch.tensor, size (B, 27), SH coeffs
         """
+        if albedoOnly :
+            # todo add code here of the vertices color but only taking in account the albedo without lighting or SH
+            return diffAlbedo
         # v_num = face_texture.shape[1]
         a,c = self.sh.a, self.sh.c
         # gamma is given in optimizer.py so to avoid we will just copy the hardcoded value here but REFACTOR TODO
@@ -269,10 +272,15 @@ class Pipeline:
         r = Y @ gamma[..., :1]
         g = Y @ gamma[..., 1:2]
         b = Y @ gamma[..., 2:]
-        face_color = diffAlbedo * torch.cat([r, g, b], dim=-1)
-        face_color = torch.clamp(face_color, min=1e-8)  # Replace zeros and negative numbers with a small positive number
-        face_color = face_color.pow(1.0 / gammaInit)
         
+        if lightingOnly:
+            # If lightingOnly is True, disregard diffuse albedo and return only lighting effect
+            face_color = torch.cat([r, g, b], dim=-1)
+        else:
+            face_color = diffAlbedo * torch.cat([r, g, b], dim=-1)
+            face_color = torch.clamp(face_color, min=1e-8)  # Replace zeros and negative numbers with a small positive number
+            # face_color = face_color.pow(1.0 / gammaInit) # gamma correction
+            
         return face_color
     # predict face and mask
     def computeVertexImage(self, cameraVertices, verticesColor, debug=False) : 
