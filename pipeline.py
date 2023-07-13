@@ -148,7 +148,7 @@ class Pipeline:
             
             vertexColors = self.computeVertexColor(diffAlbedo, specAlbedo, roughnessTextures, normals)
             # face_shape -> self.computeShape() -> vertices (if no camera) or cameraVerts (if  camera)
-            images = self.computeVertexImage(cameraVerts, vertexColors, debug=False)
+            images = self.computeVertexImage(cameraVerts, vertexColors, debug=False, interpolation=False)
         else:
             scenes = self.renderer.buildScenes(cameraVerts, self.faces32, normals, self.uvMap, diffuseTextures, specularTextures, torch.clamp(roughnessTextures, 1e-20, 10.0), self.vFocals, envMaps)
             if renderAlbedo:
@@ -174,7 +174,7 @@ class Pipeline:
         
         vertexColors = self.computeVertexColor(diffuseAlbedo, specularAlbedo, normals,albedoOnly=albedoOnly,lightingOnly=lightingOnly)
         # face_shape -> self.computeShape() -> vertices (if no camera) or cameraVerts (if  camera)
-        images = self.computeVertexImage(cameraVerts, vertexColors, debug=False)
+        images = self.computeVertexImage(cameraVerts, vertexColors, debug=False, interpolation=False)
                 
         return images
     
@@ -251,7 +251,7 @@ class Pipeline:
 
         return face_color
     # predict face and mask
-    def computeVertexImage(self, cameraVertices, verticesColor, debug=False) : 
+    def computeVertexImage(self, cameraVertices, verticesColor, debug=False, interpolation=False) : 
         #since we already have the cameraVertices
         width = 256
         height = 256
@@ -279,7 +279,7 @@ class Pipeline:
         vertices_in_screen_space[..., 1] = (vertices_in_clip_space[..., 1] + 1) / 2 * height
 
         # Vertices color manipulation
-        verticesColor = verticesColor.squeeze(0)#mean(dim=1)# 
+        verticesColor = verticesColor.squeeze(0)
         mask = mask.squeeze(0)
         # print("masking")
         # print(verticesColor.shape)
@@ -294,9 +294,27 @@ class Pipeline:
             if 0 <= x < width and 0 <= y < height:
                 # Add color to the pixel
                 image_data[y, x, :] += colors_in_screen_space[i, :]
-
-        # Add batch dimension to image_data
+        # add batch dimension [B, H, W, 3]
         image_data = image_data.unsqueeze(0)
+        if interpolation:
+            # interpolation to fill the gaps in no vertices :
+            # Prepare for bilinear interpolation by adding an extra dimension (required for F.interpolate)
+            # Rearrange the tensor to [batch, channel, height, width]
+            image_data = image_data.permute(0, 3, 1, 2)  # shape: [Batch, Channels, Height, Width]
+
+            # Define the interpolation factor
+            interpolation_factor = 16
+
+            # Perform bilinear interpolation
+            image_data = torch.nn.functional.interpolate(image_data, scale_factor=interpolation_factor, mode='bilinear', align_corners=True)
+            # Now the shape is [1, 1, H*interpolation_factor, W*interpolation_factor, 3]
+
+            # Reduce back to the original size by average pooling
+            image_data = torch.nn.functional.avg_pool2d(image_data.squeeze(0), interpolation_factor).unsqueeze(0)
+            # Now the shape is [1, H, W, 3]
+            # Rearrange the tensor back to [batch, height, width, channel]
+            image_data = image_data.squeeze(0).permute(1, 2, 0).unsqueeze(0)  # shape: [1, H, W, 3]
+            
         # add alpha channel to rgb
         alpha_channel = torch.ones((1, 256, 256, 1)).to(self.device)  # Ensure it's on the same device as your image
         image_data = torch.cat((image_data, alpha_channel), dim=-1)  # Append alpha channel
