@@ -280,7 +280,8 @@ class Optimizer:
         torch.set_grad_enabled(True)
         self.pipeline.renderer.samples = 8
         inputTensor = torch.pow(self.inputImage.tensor, self.inputImage.gamma)
-
+        
+        
         optimizer = torch.optim.Adam([
             {'params': self.pipeline.vShCoeffs, 'lr': 0.005},
             {'params': self.pipeline.vAlbedoCoeff, 'lr': 0.007}
@@ -329,7 +330,7 @@ class Optimizer:
                 lightingVertexRender = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo, lightingOnly=True)
                 albedoVertexRender = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo, albedoOnly=True)
                 
-                self.debugIteration(smoothedImage, inputTensor,diff, albedoVertexRender, lightingVertexRender, self.debugDir + '/debug_step2/A/noGamma_' + str(iter)) # custom made
+                self.debugIteration(smoothedImage, inputTensor,diff, albedoVertexRender, lightingVertexRender, self.debugDir + '/debug_step2/C/sh_' + str(iter)) # custom made
                 # also save obj
                 cameraNormals = self.pipeline.morphableModel.computeNormals(cameraVerts) # only used of obj (might be too slow)
                 for i in range(inputTensor.shape[0]):

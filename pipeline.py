@@ -215,72 +215,25 @@ class Pipeline:
 
         Parameters:
             diffAlbedo     -- torch.tensor, size (B, N, 3) 
-            specAlbedo     -- torch.tensor, size (B, N, 3)
-            roughnessTexture     -- torch.tensor, size (B, W, H, 3), from texture model, range (0, 1.)
             normals        -- torch.tensor, size (B, N, 3), rotated face normal
-            gamma            -- torch.tensor, size (B, 27), SH coeffs
+            Y              -- torch.tensor, size (B, N, 81), sh basis functions, should be (order +1 )^2
         """
         if albedoOnly :
-            # todo add code here of the vertices color but only taking in account the albedo without lighting or SH
             return diffAlbedo
-        # v_num = face_texture.shape[1]
-        a,c = self.sh.a, self.sh.c
-        # gamma is given in optimizer.py so to avoid we will just copy the hardcoded value here but REFACTOR TODO
-        gammaInit = 2.2 # was at 2.2 in Image GAMMA CORRECTION 
-        # we init gamma with a bunch of zeros 
-        gamma = torch.full((normals.shape[0],27),0.0, device=self.device)
-        batch_size = normals.shape[0]        
-        # default initiation in faceRecon3D (may need to be update or found)
-        gamma = gamma.reshape([batch_size, 3, 9])
-        # init_lit = torch.tensor([0.8, 0, 0, 0, 0, 0, 0, 0, 0], dtype=torch.float32, device=normals.device)
-        # repeat init_lit for each channel
-        # init_lit = init_lit.repeat((batch_size, 3, 1))
-        
-        # gamma = gamma + init_lit # use init_lit
-        # Instead of init_lit, use the first 9 coeffs from each channel of self.vShCoeffs
-        """9 coefficients for each channel (RGB) are typically used in rendering with SH lighting (3 bands).
-        You probably only want to use the first 9 coefficients from each channel in self.vShCoeffs for the addition operation
-        """
-        # this operation takes the first 9 elements along the second dimension of self.vShCoeffs tensor, for all elements along the first and third dimensions.
-        sh = self.vShCoeffs[:, :9, :] # keep only the 9 first elements [1, 81, 3] -> [1, 9, 3]
-        gamma = gamma + sh.permute(0, 2, 1) # premute so that Sh [1, 9, 3] becomes [1, 3, 9]
-        gamma = gamma.permute(0, 2, 1)
-        """
-        In the code, Y is a combination of nine terms, each of which is a tensor of the same shape as normals.
-        Each term represents a basis function of the Spherical Harmonics for different bands. 
-        The coefficients a and c are the scaling factors associated with each of these basis functions.
-        After constructing Y, the code calculates r, g, and b, which are the dot product of Y and the
-        corresponding channel of gamma (which contains the SH coefficients for each color channel). 
-        This is effectively evaluating the SH function for each color channel at the points specified 
-        by the normals, resulting in a color for each normal.
-        So, to sum it up, Y tensor is the representation of the Spherical Harmonic basis functions calculated 
-        for the provided normals. 
-        The dot product of Y with the gamma values results in the calculated lighting contribution
-        at each normal direction for each color channel.
-        """
-        Y = torch.cat([
-             a[0] * c[0] * torch.ones_like(normals[..., :1]).to(self.device),
-            -a[1] * c[1] * normals[..., 1:2],
-             a[1] * c[1] * normals[..., 2:],
-            -a[1] * c[1] * normals[..., :1],
-             a[2] * c[2] * normals[..., :1] * normals[..., 1:2],
-            -a[2] * c[2] * normals[..., 1:2] * normals[..., 2:],
-            0.5 * a[2] * c[2] / np.sqrt(3.) * (3 * normals[..., 2:] ** 2 - 1),
-            -a[2] * c[2] * normals[..., :1] * normals[..., 2:],
-            0.5 * a[2] * c[2] * (normals[..., :1] ** 2  - normals[..., 1:2] ** 2)
-        ], dim=-1)
-        r = Y @ gamma[..., :1]
-        g = Y @ gamma[..., 1:2]
-        b = Y @ gamma[..., 2:]
-        
+
+        gammaInit = 2.2
+        # vShCoeffs is of shape [1, 81, 3]
+        sh = self.vShCoeffs
+        Y = self.sh.preComputeSHBasisFunction(normals,sh_order=8)
+        r = Y @ sh[..., :1]
+        g = Y @ sh[..., 1:2]
+        b = Y @ sh[..., 2:]
         if lightingOnly:
-            # If lightingOnly is True, disregard diffuse albedo and return only lighting effect
             face_color = torch.cat([r, g, b], dim=-1)
         else:
             face_color = diffAlbedo * torch.cat([r, g, b], dim=-1)
-            face_color = torch.clamp(face_color, min=1e-8)  # Replace zeros and negative numbers with a small positive number
-            # face_color = face_color.pow(1.0 / gammaInit) # gamma correction
-            
+            face_color = torch.clamp(face_color, min=1e-8)
+
         return face_color
     # predict face and mask
     def computeVertexImage(self, cameraVertices, verticesColor, debug=False) : 
