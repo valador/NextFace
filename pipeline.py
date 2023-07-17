@@ -8,6 +8,7 @@ from utils import *
 from image import saveImage
 import matplotlib.pyplot as plt
 import torchvision.transforms as transforms
+from torchvision.transforms import GaussianBlur
 from PIL import Image
 from mpl_toolkits.mplot3d import Axes3D
 import polyscope as ps
@@ -148,7 +149,7 @@ class Pipeline:
             
             vertexColors = self.computeVertexColor(diffAlbedo, specAlbedo, roughnessTextures, normals)
             # face_shape -> self.computeShape() -> vertices (if no camera) or cameraVerts (if  camera)
-            images = self.computeVertexImage(cameraVerts, vertexColors, debug=False, interpolation=False)
+            images = self.computeVertexImage(cameraVerts, vertexColors, debug=False, interpolation=True)
         else:
             scenes = self.renderer.buildScenes(cameraVerts, self.faces32, normals, self.uvMap, diffuseTextures, specularTextures, torch.clamp(roughnessTextures, 1e-20, 10.0), self.vFocals, envMaps)
             if renderAlbedo:
@@ -174,7 +175,7 @@ class Pipeline:
         
         vertexColors = self.computeVertexColor(diffuseAlbedo, specularAlbedo, normals,albedoOnly=albedoOnly,lightingOnly=lightingOnly)
         # face_shape -> self.computeShape() -> vertices (if no camera) or cameraVerts (if  camera)
-        images = self.computeVertexImage(cameraVerts, vertexColors, debug=False, interpolation=False)
+        images = self.computeVertexImage(cameraVerts, vertexColors, debug=False, interpolation=True)
                 
         return images
     
@@ -251,7 +252,7 @@ class Pipeline:
 
         return face_color
     # predict face and mask
-    def computeVertexImage(self, cameraVertices, verticesColor, debug=False, interpolation=False) : 
+    def computeVertexImage(self, cameraVertices, verticesColor, debug=False, interpolation=True) : 
         #since we already have the cameraVertices
         width = 256
         height = 256
@@ -286,40 +287,55 @@ class Pipeline:
         # print(mask.shape)
         colors_in_screen_space = verticesColor[mask]
 
-        # Create an empty image
-        image_data = torch.zeros((height, width, 3), dtype=torch.float32, device=self.device)
-        # Convert your vertices and colors to an image
-        for i, vertex in enumerate(vertices_in_screen_space):
-            x, y = int(vertex[0]), int(vertex[1])
-            if 0 <= x < width and 0 <= y < height:
-                # Add color to the pixel
-                image_data[y, x, :] += colors_in_screen_space[i, :]
-        # add batch dimension [B, H, W, 3]
-        image_data = image_data.unsqueeze(0)
+        image_data = torch.zeros((1, height, width, 3), dtype=torch.float32, device=self.device)  # add batch dimension
+
         if interpolation:
-            # interpolation to fill the gaps in no vertices :
+            vertices_in_screen_space = vertices_in_screen_space.long()  # Convert to long for indexing
+		    # vertices to color ----
+            vertices_in_screen_space.clamp_(0, max=255)  # Clamp to valid pixel range
+            y_indices, x_indices = vertices_in_screen_space[:, 1], vertices_in_screen_space[:, 0]
+
+            # Perform scatter operation
+            image_data[0, y_indices, x_indices] += colors_in_screen_space
+                # ----------
+            # Define the interpolation factor
+            interpolation_factor = 32
+            
             # Prepare for bilinear interpolation by adding an extra dimension (required for F.interpolate)
             # Rearrange the tensor to [batch, channel, height, width]
             image_data = image_data.permute(0, 3, 1, 2)  # shape: [Batch, Channels, Height, Width]
 
-            # Define the interpolation factor
-            interpolation_factor = 16
-
             # Perform bilinear interpolation
             image_data = torch.nn.functional.interpolate(image_data, scale_factor=interpolation_factor, mode='bilinear', align_corners=True)
-            # Now the shape is [1, 1, H*interpolation_factor, W*interpolation_factor, 3]
 
             # Reduce back to the original size by average pooling
-            image_data = torch.nn.functional.avg_pool2d(image_data.squeeze(0), interpolation_factor).unsqueeze(0)
-            # Now the shape is [1, H, W, 3]
+            image_data = torch.nn.functional.avg_pool2d(image_data, interpolation_factor)
+
             # Rearrange the tensor back to [batch, height, width, channel]
-            image_data = image_data.squeeze(0).permute(1, 2, 0).unsqueeze(0)  # shape: [1, H, W, 3]
-            
+            image_data = image_data.permute(0, 2, 3, 1)  # shape: [1, H, W, 3]
+        else:
+            # Convert vertices and colors to an image without interpolation
+            # TRES TRES LENT !! maybe need to average beforehand to handle vertices on same pixel
+            # for i, vertex in enumerate(vertices_in_screen_space):
+            #     x, y = int(vertex[0]), int(vertex[1])
+            #     if 0 <= x < width and 0 <= y < height:
+            #         # Add color to the pixel
+            #         image_data[0, y, x, :] += colors_in_screen_space[i, :]  # note the change here to accommodate the extra dimension
+            # Convert vertices and colors to an image without interpolation
+            vertices_in_screen_space = vertices_in_screen_space.long()  # Convert to long for indexing
+            vertices_in_screen_space.clamp_(0, max=255)  # Clamp to valid pixel range
+            y_indices, x_indices = vertices_in_screen_space[:, 1], vertices_in_screen_space[:, 0]
+            image_data.clamp_(0, 1)  # clamp values between 0 and 1
+
+            # Perform scatter operation
+            image_data[0, y_indices, x_indices] += colors_in_screen_space
+
         # add alpha channel to rgb
-        alpha_channel = torch.ones((1, 256, 256, 1)).to(self.device)  # Ensure it's on the same device as your image
-        image_data = torch.cat((image_data, alpha_channel), dim=-1)  # Append alpha channel
-        
-        if debug:            
+        alpha_channel = torch.ones((1, height, width, 1)).to(self.device)
+        image_data = torch.cat((image_data, alpha_channel), dim=-1)
+        # depending on the values in image_data, the += operator might create pixel values greater than 1 
+        # (if you're using normalized float values for pixels).might need to clamp the values again after the scatter operation.
+        if debug:
             normals = self.morphableModel.meshNormals.computeNormals(cameraVertices)
             self.displayTensorColorAndNormals(vertices_in_screen_space,verticesColor,normals)
 
