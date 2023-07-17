@@ -149,7 +149,7 @@ class Pipeline:
             
             vertexColors = self.computeVertexColor(diffAlbedo, specAlbedo, roughnessTextures, normals)
             # face_shape -> self.computeShape() -> vertices (if no camera) or cameraVerts (if  camera)
-            images = self.computeVertexImage(cameraVerts, vertexColors, debug=False, interpolation=True)
+            images = self.computeVertexImage(cameraVerts, vertexColors, debug=False, interpolation=False)
         else:
             scenes = self.renderer.buildScenes(cameraVerts, self.faces32, normals, self.uvMap, diffuseTextures, specularTextures, torch.clamp(roughnessTextures, 1e-20, 10.0), self.vFocals, envMaps)
             if renderAlbedo:
@@ -175,7 +175,7 @@ class Pipeline:
         
         vertexColors = self.computeVertexColor(diffuseAlbedo, specularAlbedo, normals,albedoOnly=albedoOnly,lightingOnly=lightingOnly)
         # face_shape -> self.computeShape() -> vertices (if no camera) or cameraVerts (if  camera)
-        images = self.computeVertexImage(cameraVerts, vertexColors, debug=False, interpolation=True)
+        images = self.computeVertexImage(cameraVerts, vertexColors, debug=False, interpolation=False)
                 
         return images
     
@@ -252,7 +252,7 @@ class Pipeline:
 
         return face_color
     # predict face and mask
-    def computeVertexImage(self, cameraVertices, verticesColor, debug=False, interpolation=True) : 
+    def computeVertexImage(self, cameraVertices, verticesColor, debug=False, interpolation=False) : 
         #since we already have the cameraVertices
         width = 256
         height = 256
