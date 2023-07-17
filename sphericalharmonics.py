@@ -13,8 +13,8 @@ class SphericalHarmonics:
         self.device = device
         self.setEnvironmentMapResolution(envMapResolution)
         # DANIEL a and c are defined in the problem by itself, this value are not necessarily true
-        # self.a = [np.pi, 2 * np.pi / np.sqrt(3.), 2 * np.pi / np.sqrt(8.)]
-        # self.c = [1/np.sqrt(4 * np.pi), np.sqrt(3.) / np.sqrt(4 * np.pi), 3 * np.sqrt(5.) / np.sqrt(12 * np.pi)]
+        self.a = [np.pi, 2 * np.pi / np.sqrt(3.), 2 * np.pi / np.sqrt(8.)]
+        self.c = [1/np.sqrt(4 * np.pi), np.sqrt(3.) / np.sqrt(4 * np.pi), 3 * np.sqrt(5.) / np.sqrt(12 * np.pi)]
     def setEnvironmentMapResolution(self, res):
         res = (res, res)
         self.resolution = res
@@ -124,24 +124,28 @@ class SphericalHarmonics:
         # if self.Y is not None:
         #     return self.Y
         
-        # sh_order = 8  # Order of spherical harmonics
-        # numCoeffs = (sh_order + 1) ** 2  # Calculate the number of SH coefficients
+        numCoeffs = (sh_order + 1) ** 2  # Calculate the number of SH coefficients
        
-        # # Pre-allocate the tensor to hold SH basis
-        # Y = torch.empty((normals.shape[0], normals.shape[1], numCoeffs), device=normals.device)
-        # theta = torch.acos(normals[..., 2:]).squeeze()
-        # phi = torch.atan2(normals[..., 1:2], normals[..., :1]).squeeze()
+        # Pre-allocate the tensor to hold SH basis
+        Y = torch.empty((normals.shape[0], normals.shape[1], numCoeffs), device=normals.device)
+        theta = torch.acos(normals[..., 2:]).squeeze()
+        phi = torch.atan2(normals[..., 1:2], normals[..., :1]).squeeze()
 
-        # # Compute SH basis for each l, m and normal
-        # element = 0
-        # for l in range(sh_order+1):
-        #     for m in range(-l, l + 1):
-        #         Y_l_m = self.SH(l, m, theta, phi)
-        #         Y[..., element] = Y_l_m.squeeze()
-        #         element += 1
-        # # self.Y = Y
-        
-        return dr.sh_eval(normals,sh_order)
+        # Compute SH basis for each l, m and normal
+        element = 0
+        for l in range(sh_order+1):
+            for m in range(-l, l + 1):
+                Y_l_m = self.SH(l, m, theta, phi)
+                Y[..., element] = Y_l_m.squeeze()
+                element += 1
+        self.Y = Y
+    
+        # normalsJit = dr.cuda.TensorXf(normals.squeeze(0).transpose(0,1)) # convert to tensor TODO possible slow 
+        # print(dr.is_array_v(normalsJit))
+        # print(normalsJit.shape)
+        # print(normalsJit.Size)
+        # return dr.sh_eval(normalsJit,sh_order)
+        return Y
     
     
     

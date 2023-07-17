@@ -220,11 +220,26 @@ class Pipeline:
         """
         if albedoOnly :
             return diffAlbedo
-
+        a,c = self.sh.a, self.sh.c
         gammaInit = 2.2
         # vShCoeffs is of shape [1, 81, 3]
-        sh = self.vShCoeffs
+        sh = self.vShCoeffs[:,:9,:] # order 2
+        sh = self.vShCoeffs # order 8
+        #new way
         Y = self.sh.preComputeSHBasisFunction(normals,sh_order=8)
+        # old way
+        # sh.permute(0, 2, 1)
+        # Y = torch.cat([
+        #      a[0] * c[0] * torch.ones_like(normals[..., :1]).to(self.device),
+        #     -a[1] * c[1] * normals[..., 1:2],
+        #      a[1] * c[1] * normals[..., 2:],
+        #     -a[1] * c[1] * normals[..., :1],
+        #      a[2] * c[2] * normals[..., :1] * normals[..., 1:2],
+        #     -a[2] * c[2] * normals[..., 1:2] * normals[..., 2:],
+        #     0.5 * a[2] * c[2] / np.sqrt(3.) * (3 * normals[..., 2:] ** 2 - 1),
+        #     -a[2] * c[2] * normals[..., :1] * normals[..., 2:],
+        #     0.5 * a[2] * c[2] * (normals[..., :1] ** 2  - normals[..., 1:2] ** 2)
+        # ], dim=-1)
         r = Y @ sh[..., :1]
         g = Y @ sh[..., 1:2]
         b = Y @ sh[..., 2:]
