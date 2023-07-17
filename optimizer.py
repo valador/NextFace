@@ -330,7 +330,11 @@ class Optimizer:
                 lightingVertexRender = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo, lightingOnly=True)
                 albedoVertexRender = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo, albedoOnly=True)
                 
+<<<<<<< HEAD
                 self.debugIteration(smoothedImage, inputTensor,diff, albedoVertexRender, lightingVertexRender, self.debugDir + '/debug_step2/C/sh_drjit_2_' + str(iter)) # custom made
+=======
+                self.debugIteration(smoothedImage, inputTensor,diff, albedoVertexRender, lightingVertexRender, self.debugDir + '/debug_step2/B/no_interpolation_' + str(iter)) # custom made
+>>>>>>> 56ec937c (wip interpolation)
                 # also save obj
                 cameraNormals = self.pipeline.morphableModel.computeNormals(cameraVerts) # only used of obj (might be too slow)
                 for i in range(inputTensor.shape[0]):
