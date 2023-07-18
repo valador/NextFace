@@ -103,7 +103,7 @@ class Pipeline:
         transformedVertices = self.camera.transformVertices(vertices, self.vTranslation, self.vRotation)
         return transformedVertices
 
-    def render(self, cameraVerts = None, diffuseTextures = None, specularTextures = None, roughnessTextures = None, renderAlbedo = False, vertexBased = False):
+    def render(self, cameraVerts = None, diffuseTextures = None, specularTextures = None, roughnessTextures = None, renderAlbedo = False):
         '''
         ray trace an image given camera vertices and corresponding textures
         :param cameraVerts: camera vertices tensor [n, verticesNumber, 3]
@@ -141,21 +141,11 @@ class Pipeline:
         assert(cameraVerts.shape[0] == envMaps.shape[0])
         assert (diffuseTextures.shape[0] == specularTextures.shape[0] == roughnessTextures.shape[0])
 
-        if vertexBased:
-            # do we take in account rotation when computing normals ?
-            # coeff -> face shape -> face shape rotated -> face vertex (based on camera) -> normals (based on face vertex) -> rotated normals *
-            diffAlbedo = self.morphableModel.computeDiffuseAlbedo(self.vAlbedoCoeff)
-            specAlbedo = self.morphableModel.computeSpecularAlbedo(self.vAlbedoCoeff)
-            
-            vertexColors = self.computeVertexColor(diffAlbedo, specAlbedo, roughnessTextures, normals)
-            # face_shape -> self.computeShape() -> vertices (if no camera) or cameraVerts (if  camera)
-            images = self.computeVertexImage(cameraVerts, vertexColors, debug=False, interpolation=False)
+        scenes = self.renderer.buildScenes(cameraVerts, self.faces32, normals, self.uvMap, diffuseTextures, specularTextures, torch.clamp(roughnessTextures, 1e-20, 10.0), self.vFocals, envMaps)
+        if renderAlbedo:
+            images = self.renderer.renderAlbedo(scenes)
         else:
-            scenes = self.renderer.buildScenes(cameraVerts, self.faces32, normals, self.uvMap, diffuseTextures, specularTextures, torch.clamp(roughnessTextures, 1e-20, 10.0), self.vFocals, envMaps)
-            if renderAlbedo:
-                images = self.renderer.renderAlbedo(scenes)
-            else:
-                images = self.renderer.render(scenes)
+            images = self.renderer.render(scenes)
                 
         return images
     def renderVertexBased(self, cameraVerts = None, diffuseAlbedo = None, specularAlbedo = None, albedoOnly= False, lightingOnly=False ):
@@ -175,7 +165,7 @@ class Pipeline:
         
         vertexColors = self.computeVertexColor(diffuseAlbedo, specularAlbedo, normals,albedoOnly=albedoOnly,lightingOnly=lightingOnly)
         # face_shape -> self.computeShape() -> vertices (if no camera) or cameraVerts (if  camera)
-        images = self.computeVertexImage(cameraVerts, vertexColors, debug=False, interpolation=False)
+        images = self.computeVertexImage(cameraVerts, vertexColors, normals, debug=False, interpolation=False)
                 
         return images
     
@@ -228,19 +218,7 @@ class Pipeline:
         sh = self.vShCoeffs # order 8
         #new way
         Y = self.sh.preComputeSHBasisFunction(normals,sh_order=8)
-        # old way
-        # sh.permute(0, 2, 1)
-        # Y = torch.cat([
-        #      a[0] * c[0] * torch.ones_like(normals[..., :1]).to(self.device),
-        #     -a[1] * c[1] * normals[..., 1:2],
-        #      a[1] * c[1] * normals[..., 2:],
-        #     -a[1] * c[1] * normals[..., :1],
-        #      a[2] * c[2] * normals[..., :1] * normals[..., 1:2],
-        #     -a[2] * c[2] * normals[..., 1:2] * normals[..., 2:],
-        #     0.5 * a[2] * c[2] / np.sqrt(3.) * (3 * normals[..., 2:] ** 2 - 1),
-        #     -a[2] * c[2] * normals[..., :1] * normals[..., 2:],
-        #     0.5 * a[2] * c[2] * (normals[..., :1] ** 2  - normals[..., 1:2] ** 2)
-        # ], dim=-1)
+        
         r = Y @ sh[..., :1]
         g = Y @ sh[..., 1:2]
         b = Y @ sh[..., 2:]
@@ -249,10 +227,14 @@ class Pipeline:
         else:
             face_color = diffAlbedo * torch.cat([r, g, b], dim=-1)
             face_color = torch.clamp(face_color, min=1e-8)
+        
+        # gamma correction
+        # color -> pow(color, 1/gamma_init)
+        face_color = torch.pow(face_color,1.0/gammaInit)
 
         return face_color
     # predict face and mask
-    def computeVertexImage(self, cameraVertices, verticesColor, debug=False, interpolation=False) : 
+    def computeVertexImage(self, cameraVertices, verticesColor, normals, debug=False, interpolation=False) : 
         #since we already have the cameraVertices
         width = 256
         height = 256
@@ -269,9 +251,10 @@ class Pipeline:
 
         # Normalize the vertices (divide by W) and put them in cartesian coordinates
         vertices_in_clip_space = vertices_in_clip_space[..., :3] / vertices_in_clip_space[..., 3:]
-        # Ignore vertices where x, y,  > 1 or < -1
-        mask = torch.abs(vertices_in_clip_space[:, :, :2]) <= 1.0  # Only consider x and y coordinates
-        mask = mask.all(dim=-1)  # All x and y must satisfy the condition
+        # Create a mask for the vertices where the normal is pointing towards -z
+        normal_mask = normals[..., 2] <= 0
+        # ignore vertices both the x and y coordinates are within the range -1 to 1 and the normal is not pointing towards -z.
+        mask = (torch.abs(vertices_in_clip_space[:, :, :2]) <= 1.0 ).all(dim=-1) & normal_mask 
         vertices_in_clip_space = vertices_in_clip_space[mask]
 
         # Convert vertices from clip space to screen space
@@ -282,13 +265,12 @@ class Pipeline:
         # Vertices color manipulation
         verticesColor = verticesColor.squeeze(0)
         mask = mask.squeeze(0)
-        # print("masking")
-        # print(verticesColor.shape)
-        # print(mask.shape)
         colors_in_screen_space = verticesColor[mask]
 
-        image_data = torch.zeros((1, height, width, 3), dtype=torch.float32, device=self.device)  # add batch dimension
-
+        image_data = torch.zeros((1, height, width, 4), dtype=torch.float32, device=self.device)  # add batch dimension and alpha dimension(all 0)
+        alpha_channel = torch.zeros((1, width, height, 1)).to(self.device)
+        # Initialize a counter for each pixel
+        counter = torch.zeros((1, height, width, 3), dtype=torch.float32, device=self.device)
         if interpolation:
             vertices_in_screen_space = vertices_in_screen_space.long()  # Convert to long for indexing
 		    # vertices to color ----
@@ -315,30 +297,35 @@ class Pipeline:
             image_data = image_data.permute(0, 2, 3, 1)  # shape: [1, H, W, 3]
         else:
             # Convert vertices and colors to an image without interpolation
-            # TRES TRES LENT !! maybe need to average beforehand to handle vertices on same pixel
-            # for i, vertex in enumerate(vertices_in_screen_space):
-            #     x, y = int(vertex[0]), int(vertex[1])
-            #     if 0 <= x < width and 0 <= y < height:
-            #         # Add color to the pixel
-            #         image_data[0, y, x, :] += colors_in_screen_space[i, :]  # note the change here to accommodate the extra dimension
-            # Convert vertices and colors to an image without interpolation
             vertices_in_screen_space = vertices_in_screen_space.long()  # Convert to long for indexing
-            vertices_in_screen_space.clamp_(0, max=255)  # Clamp to valid pixel range
-            y_indices, x_indices = vertices_in_screen_space[:, 1], vertices_in_screen_space[:, 0]
-            image_data.clamp_(0, 1)  # clamp values between 0 and 1
+            vertices_in_screen_space.clamp_(0, max=255)  # Clamp to valid pixel range TODO change for bigger width + height values
+            y_indices, x_indices = vertices_in_screen_space[:, 1], vertices_in_screen_space[:, 0] # create two tensors for values
+            # Perform scatter operation + add alpha values
+            counter[0, y_indices, x_indices] += 1 # count all the pixels that have a vertex on them
+            image_data[0, y_indices, x_indices, :3] += colors_in_screen_space # add colors to pixels
+            # Update the alpha channel of those pixels to 1 where we have updated the color
+            alpha_mask = counter[0, y_indices, x_indices].sum(dim=1) > 0 # create a mask for each vertex where there is at least one pixel splat there
+            alpha_channel[0, y_indices[alpha_mask], x_indices[alpha_mask]] = 1.0 # put a 1.0 to all the pixels that are in our mask
+            # Average the color and clamp at 1
+            image_data[0, :, :, :3] /= counter[0].clamp(min=1) # average tje color and clamp to one so that we dont divide by one
+            image_data = image_data.clamp(0, 1) # clamp values of color and alpha to be between 0 and 1
 
-            # Perform scatter operation
-            image_data[0, y_indices, x_indices] += colors_in_screen_space
+            # Add alpha channel to the image_data
+            image_data[..., 3:] = alpha_channel 
 
-        # add alpha channel to rgb
-        alpha_channel = torch.ones((1, height, width, 1)).to(self.device)
-        image_data = torch.cat((image_data, alpha_channel), dim=-1)
-        # depending on the values in image_data, the += operator might create pixel values greater than 1 
-        # (if you're using normalized float values for pixels).might need to clamp the values again after the scatter operation.
         if debug:
-            normals = self.morphableModel.meshNormals.computeNormals(cameraVertices)
-            self.displayTensorColorAndNormals(vertices_in_screen_space,verticesColor,normals)
-
+            # normals = self.morphableModel.meshNormals.computeNormals(cameraVertices)
+            # self.displayTensorColorAndNormals(vertices_in_screen_space,verticesColor,normals)
+            # DEBUG COUNTER
+            print("counter")
+            debug_counter = counter[0].detach().cpu().numpy()
+            plt.imshow(debug_counter, cmap='hot', interpolation='nearest')
+            plt.show()
+            # DEBUG ALPHA CHANNEL
+            print("alpha")
+            debug_alpha = alpha_channel[0].detach().cpu().numpy()
+            plt.imshow(debug_alpha, cmap='hot', interpolation='nearest')
+            plt.show()
         return image_data
     
     def perspectiveProjMatrix(self, fov, aspect_ratio, near, far):

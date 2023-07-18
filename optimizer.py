@@ -10,7 +10,7 @@ import argparse
 import pickle
 import tqdm
 import sys
-
+import matplotlib.pyplot as plt
 class Optimizer:
 
     def __init__(self, outputDir, config):
@@ -304,11 +304,38 @@ class Optimizer:
             images = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo)
             mask = images[..., 3:] # extract alpha channel 
             smoothedImage = smoothImage(images[..., 0:3], self.smoothing)
+            # TO REMOVE -------------
+            # Obtain alpha channel
+            # alpha = images[..., 3]
+
+            # # Create a mask where alpha values that are greater than 0 will be true
+            # mask = alpha > 0
+
+            # # Convert mask to float and invert (so that 0 becomes 1 and 1 becomes 0)
+            # mask_inverse = (~mask).float()
+
+            # # Create a blue image of the same size as your images
+            # blue_image = torch.zeros_like(images)
+            # blue_image[..., 2] = 1  # Assuming your color channel is in the order (R,G,B)
+            # blue_image[..., 3] = 1  # Set alpha channel
+            # # Create a masked version of your images where if mask = true -> image pixel else -> blue = background blue 
+            # images_masked = images * mask.unsqueeze(-1) + blue_image * mask_inverse.unsqueeze(-1)  # We unsqueeze to match the dimensions
+
+            # # Now `images_masked` will be your original image where alpha > 0 and blue where alpha == 0. You can now proceed with smoothing
+            # smoothedImage = smoothImage(images_masked[..., :3], self.smoothing)
+
+            # # Display smoothed Image
+            # # Move tensor to cpu and convert to numpy
+            # smoothedImage_np = smoothedImage[0].detach().cpu().numpy()
+
+            # # Display the image
+            # plt.imshow(smoothedImage_np)
+            # plt.show()
+        #     # TO REMOVE ----------
             diff = mask * (smoothedImage - inputTensor).abs()
             #photoLoss =  diff.mean(dim=-1).sum() / float(self.framesNumber)
             photoLoss = 1000.* diff.mean()
             landmarksLoss = self.config.weightLandmarksLossStep2 *  self.landmarkLoss(cameraVerts, self.landmarks)
-
             regLoss = 0.0001 * self.pipeline.vShCoeffs.pow(2).mean()
             regLoss += self.config.weightAlbedoReg * self.regStatModel(self.pipeline.vAlbedoCoeff, self.pipeline.morphableModel.diffuseAlbedoPcaVar)
             regLoss += self.config.weightShapeReg * self.regStatModel(self.pipeline.vShapeCoeff, self.pipeline.morphableModel.shapePcaVar)
@@ -330,7 +357,7 @@ class Optimizer:
                 lightingVertexRender = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo, lightingOnly=True)
                 albedoVertexRender = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo, albedoOnly=True)
                 
-                self.debugIteration(smoothedImage, inputTensor,diff, albedoVertexRender, lightingVertexRender, self.debugDir + '/debug_step2/B/no_interpolation_' + str(iter)) # custom made
+                self.debugIteration(smoothedImage, inputTensor,diff, albedoVertexRender, lightingVertexRender, self.debugDir + '/debug_step2/E_photoloss/photoloss_' + str(iter)) # custom made
                 # also save obj
                 cameraNormals = self.pipeline.morphableModel.computeNormals(cameraVerts) # only used of obj (might be too slow)
                 for i in range(inputTensor.shape[0]):
