@@ -12,9 +12,6 @@ class SphericalHarmonics:
     def __init__(self, envMapResolution, device):
         self.device = device
         self.setEnvironmentMapResolution(envMapResolution)
-        # DANIEL a and c are defined in the problem by itself, this value are not necessarily true
-        self.a = [np.pi, 2 * np.pi / np.sqrt(3.), 2 * np.pi / np.sqrt(8.)]
-        self.c = [1/np.sqrt(4 * np.pi), np.sqrt(3.) / np.sqrt(4 * np.pi), 3 * np.sqrt(5.) / np.sqrt(12 * np.pi)]
     def setEnvironmentMapResolution(self, res):
         res = (res, res)
         self.resolution = res
@@ -71,7 +68,10 @@ class SphericalHarmonics:
         else:
             return math.sqrt(2.0) * self.normlizeSH(l, -m) * \
                    torch.sin(-m * phi) * self.associatedLegendrePolynomial(l, -m, torch.cos(theta))
-
+    
+    
+    
+        
     def toEnvMap(self, shCoeffs, smooth = False):
         '''
         create an environment map from given sh coeffs
@@ -121,9 +121,6 @@ class SphericalHarmonics:
         Returns:
             [B, N, (sh_order +1)^2 ]: functions used with vSHCoeffs to get a better color approximation
         """
-        # if self.Y is not None:
-        #     return self.Y
-        
         numCoeffs = (sh_order + 1) ** 2  # Calculate the number of SH coefficients
        
         # Pre-allocate the tensor to hold SH basis
@@ -131,22 +128,51 @@ class SphericalHarmonics:
         theta = torch.acos(normals[..., 2:]).squeeze()
         phi = torch.atan2(normals[..., 1:2], normals[..., :1]).squeeze()
 
-        # Compute SH basis for each l, m and normal
-        element = 0
+        # #instead of for loops we can we can use broadcasting and torch.meshgrid to create a 2D grid of l and m values. 
+        # # These can be used to compute the SH basis for each combination of l and m in a vectorized way.
+        # # Generate all l, m pairs
+        # l_values = torch.arange(sh_order + 1).unsqueeze(1).repeat(1, sh_order + 1).reshape(-1)
+        # m_values = torch.arange(-sh_order, sh_order + 1).repeat(sh_order + 1)
+        # # Make sure l_values and m_values are in the same device as normals
+        # l_values = l_values.to(normals.device)
+        # m_values = m_values.to(normals.device)
+        """l and m are 1D tensors with 81 and 153 elements respectively. 
+        The l tensor contains the degree of each spherical harmonic (which is why it has 81 elements for SH order 8),
+        and m contains the order of each spherical harmonic (ranging from -l to +l). 
+        This is why m has more elements (153 for SH order 8)."""
+        # Generate Y_l_m for all l, m
+        # Y = self.vectorizedSH(l_values[:, None, None], m_values[:, None, None], theta[None, ...], phi[None, ...]).squeeze()
+        # # Compute SH basis for each l, m and normal
+        # element = 0
         for l in range(sh_order+1):
             for m in range(-l, l + 1):
                 Y_l_m = self.SH(l, m, theta, phi)
                 Y[..., element] = Y_l_m.squeeze()
                 element += 1
-        self.Y = Y
-    
-        # normalsJit = dr.cuda.TensorXf(normals.squeeze(0).transpose(0,1)) # convert to tensor TODO possible slow 
-        # print(dr.is_array_v(normalsJit))
-        # print(normalsJit.shape)
-        # print(normalsJit.Size)
-        # return dr.sh_eval(normalsJit,sh_order)
         return Y
+    # def tensorial_factorial(self, n):
+    #     return torch.exp(torch.lgamma(n + 1))
     
-    
+    # def normlizeVectorizedSH(self, l, m):
+    #     # Get number of m values for each l
+    #     num_m_values = 2 * l + 1
+    #     # Repeat each l for corresponding number of m values
+    #     l = torch.tensor([li for li, num in zip(l.tolist(), num_m_values.tolist()) for _ in range(num)], device=l.device)
+    #     return torch.sqrt((2.0 * l + 1.0) * self.tensorial_factorial(l - torch.abs(m)) / \
+    #                     (4 * math.pi * self.tensorial_factorial(l + torch.abs(m))))
+
+
+    # def vectorizedSH(self, l, m, theta, phi):
+    #     cos_theta = torch.cos(theta)
+    #     norm = self.normlizeVectorizedSH(l, m)
+    #     Y = torch.zeros_like(l, device=m.device)
+    #     Y[m == 0] = norm[m == 0] * self.associatedLegendrePolynomial(l[m == 0], 0, cos_theta[m == 0])
+    #     if m.max() > 0:
+    #         Y_positive = torch.sqrt(2.0) * norm[m > 0] * torch.cos(m[m > 0] * phi[m > 0]) * self.associatedLegendrePolynomial(l[m > 0], m[m > 0], cos_theta[m > 0])
+    #         Y[m > 0] = Y_positive
+    #     if m.min() < 0:
+    #         Y_negative = torch.sqrt(2.0) * norm[m < 0] * torch.sin(torch.abs(m[m < 0]) * phi[m < 0]) * self.associatedLegendrePolynomial(l[m < 0], torch.abs(m[m < 0]), cos_theta[m < 0])
+    #         Y[m < 0] = Y_negative
+    #     return Y
     
     
