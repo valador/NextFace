@@ -159,12 +159,12 @@ class Pipeline:
         if cameraVerts is None or diffuseAlbedo is None:
             vertices, diffuseAlbedo, specularAlbedo = self.morphableModel.computeShapeAlbedo(self.vShapeCoeff, self.vExpCoeff, self.vAlbedoCoeff)
             cameraVerts = self.camera.transformVertices(vertices, self.vTranslation, self.vRotation)
-        #compute normals
+        # compute normals
         normals = self.morphableModel.meshNormals.computeNormals(cameraVerts)
         assert (cameraVerts.dim() == 3 and cameraVerts.shape[-1] == 3)
-        
-        vertexColors = self.computeVertexColor(diffuseAlbedo, specularAlbedo, normals,albedoOnly=albedoOnly,lightingOnly=lightingOnly)
-        # face_shape -> self.computeShape() -> vertices (if no camera) or cameraVerts (if  camera)
+        # compute colors for vertices
+        vertexColors = self.computeVertexColor(diffuseAlbedo, specularAlbedo, normals, albedoOnly=albedoOnly, lightingOnly=lightingOnly)
+        # compute image based on the colors
         images = self.computeVertexImage(cameraVerts, vertexColors, normals, debug=False, interpolation=False)
                 
         return images
@@ -211,14 +211,10 @@ class Pipeline:
         """
         if albedoOnly :
             return diffAlbedo
-        a,c = self.sh.a, self.sh.c
         gammaInit = 2.2
         # vShCoeffs is of shape [1, 81, 3]
-        sh = self.vShCoeffs[:,:9,:] # order 2
         sh = self.vShCoeffs # order 8
-        #new way
         Y = self.sh.preComputeSHBasisFunction(normals,sh_order=8)
-        
         r = Y @ sh[..., :1]
         g = Y @ sh[..., 1:2]
         b = Y @ sh[..., 2:]
@@ -229,8 +225,7 @@ class Pipeline:
             face_color = torch.clamp(face_color, min=1e-8)
         
         # gamma correction
-        # color -> pow(color, 1/gamma_init)
-        face_color = torch.pow(face_color,1.0/gammaInit)
+        face_color = torch.pow(face_color, 1.0/gammaInit)
 
         return face_color
     # predict face and mask
@@ -242,7 +237,7 @@ class Pipeline:
         far = 100
         near = 0.1
         
-        # 1- find projectionMatrix based from camera : camera space -> clip space
+        # find projectionMatrix based from camera : camera space -> clip space
         projMatrix = self.perspectiveProjMatrix(fov,width/height, near, far).to(self.device)
         # Apply the projection matrix to vertices
         ones = torch.ones(cameraVertices.shape[0], cameraVertices.shape[1], 1).to(self.device)
@@ -273,12 +268,10 @@ class Pipeline:
         counter = torch.zeros((1, height, width, 3), dtype=torch.float32, device=self.device)
         if interpolation:
             vertices_in_screen_space = vertices_in_screen_space.long()  # Convert to long for indexing
-		    # vertices to color ----
-            vertices_in_screen_space.clamp_(0, max=255)  # Clamp to valid pixel range
-            y_indices, x_indices = vertices_in_screen_space[:, 1], vertices_in_screen_space[:, 0]
-
-            # Perform scatter operation
-            image_data[0, y_indices, x_indices] += colors_in_screen_space
+            vertices_in_screen_space.clamp_(0, max=255)  # Clamp to valid pixel range TODO change for bigger width + height values
+            y_indices, x_indices = vertices_in_screen_space[:, 1], vertices_in_screen_space[:, 0] # create two tensors for values
+            # Perform scatter operation + add alpha values
+            image_data[0, y_indices, x_indices, :3] += colors_in_screen_space # add colors to pixels
                 # ----------
             # Define the interpolation factor
             interpolation_factor = 32
@@ -303,15 +296,16 @@ class Pipeline:
             # Perform scatter operation + add alpha values
             counter[0, y_indices, x_indices] += 1 # count all the pixels that have a vertex on them
             image_data[0, y_indices, x_indices, :3] += colors_in_screen_space # add colors to pixels
-            # Update the alpha channel of those pixels to 1 where we have updated the color
-            alpha_mask = counter[0, y_indices, x_indices].sum(dim=1) > 0 # create a mask for each vertex where there is at least one pixel splat there
-            alpha_channel[0, y_indices[alpha_mask], x_indices[alpha_mask]] = 1.0 # put a 1.0 to all the pixels that are in our mask
-            # Average the color and clamp at 1
-            image_data[0, :, :, :3] /= counter[0].clamp(min=1) # average tje color and clamp to one so that we dont divide by one
-            image_data = image_data.clamp(0, 1) # clamp values of color and alpha to be between 0 and 1
+            
+        # Update the alpha channel of those pixels to 1 where we have updated the color
+        alpha_mask = counter[0, y_indices, x_indices].sum(dim=1) > 0 # create a mask for each vertex where there is at least one pixel splat there
+        alpha_channel[0, y_indices[alpha_mask], x_indices[alpha_mask]] = 1.0 # put a 1.0 to all the pixels that are in our mask
+        # Average the color and clamp at 1
+        image_data[0, :, :, :3] /= counter[0].clamp(min=1) # average tje color and clamp to one so that we dont divide by one
+        image_data = image_data.clamp(0, 1) # clamp values of color and alpha to be between 0 and 1
 
-            # Add alpha channel to the image_data
-            image_data[..., 3:] = alpha_channel 
+        # Add alpha channel to the image_data
+        image_data[..., 3:] = alpha_channel 
 
         if debug:
             # normals = self.morphableModel.meshNormals.computeNormals(cameraVertices)

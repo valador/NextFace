@@ -1,7 +1,6 @@
 from image import Image, ImageFolder, overlayImage, saveImage
 from gaussiansmoothing import GaussianSmoothing, smoothImage
 from projection import estimateCameraPosition
-
 from textureloss import TextureLoss
 from pipeline import Pipeline
 from config import Config
@@ -10,7 +9,7 @@ import argparse
 import pickle
 import tqdm
 import sys
-import matplotlib.pyplot as plt
+
 class Optimizer:
 
     def __init__(self, outputDir, config):
@@ -147,10 +146,12 @@ class Optimizer:
 
         self.pipeline.vRotation = rot.clone().detach()
         self.pipeline.vTranslation = trans.clone().detach()
+    
     def getTextureIndex(self, i):
         if self.pipeline.sharedIdentity:
             return 0
         return i
+    
     def debugFrame(self, image, target, diffuseTexture, specularTexture, roughnessTexture, outputPrefix):
         for i in range(image.shape[0]):
             diff = (image[i] - target[i]).abs()
@@ -263,7 +264,7 @@ class Optimizer:
             if self.config.debugFrequency > 0 and iter % self.config.debugFrequency == 0:
                     # save obj
                     cameraNormals = self.pipeline.morphableModel.computeNormals(cameraVertices) # only used of obj (might be too slow)
-                    saveObj(self.debugDir + '/mesh/' + 'debug1_iter' + str(iter)+'.obj',
+                    saveObj(self.debugDir + '/mesh/' + 'step1_iter' + str(iter)+'.obj',
                             'material' + str(iter) + '.mtl',
                             cameraVertices[0],
                             self.pipeline.faces32,
@@ -304,34 +305,6 @@ class Optimizer:
             images = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo)
             mask = images[..., 3:] # extract alpha channel 
             smoothedImage = smoothImage(images[..., 0:3], self.smoothing)
-            # TO REMOVE -------------
-            # Obtain alpha channel
-            # alpha = images[..., 3]
-
-            # # Create a mask where alpha values that are greater than 0 will be true
-            # mask = alpha > 0
-
-            # # Convert mask to float and invert (so that 0 becomes 1 and 1 becomes 0)
-            # mask_inverse = (~mask).float()
-
-            # # Create a blue image of the same size as your images
-            # blue_image = torch.zeros_like(images)
-            # blue_image[..., 2] = 1  # Assuming your color channel is in the order (R,G,B)
-            # blue_image[..., 3] = 1  # Set alpha channel
-            # # Create a masked version of your images where if mask = true -> image pixel else -> blue = background blue 
-            # images_masked = images * mask.unsqueeze(-1) + blue_image * mask_inverse.unsqueeze(-1)  # We unsqueeze to match the dimensions
-
-            # # Now `images_masked` will be your original image where alpha > 0 and blue where alpha == 0. You can now proceed with smoothing
-            # smoothedImage = smoothImage(images_masked[..., :3], self.smoothing)
-
-            # # Display smoothed Image
-            # # Move tensor to cpu and convert to numpy
-            # smoothedImage_np = smoothedImage[0].detach().cpu().numpy()
-
-            # # Display the image
-            # plt.imshow(smoothedImage_np)
-            # plt.show()
-        #     # TO REMOVE ----------
             diff = mask * (smoothedImage - inputTensor).abs()
             #photoLoss =  diff.mean(dim=-1).sum() / float(self.framesNumber)
             photoLoss = 1000.* diff.mean()
@@ -353,15 +326,15 @@ class Optimizer:
                       '. regLoss: ', regLoss.item())
 
             if self.config.debugFrequency > 0 and iter % self.config.debugFrequency == 0:
-                # self.debugFrame(smoothedImage, inputTensor, diffuseTextures, specularTextures, self.pipeline.vRoughness, self.debugDir + '/debug_step2/A/noGamma_' + str(iter))
+                # self.debugFrame(smoothedImage, inputTensor, vDiffTextures, vSpecTextures, vRoughTextures, self.debugDir + 'step2_iter' + str(iter))
+                
                 lightingVertexRender = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo, lightingOnly=True)
                 albedoVertexRender = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo, albedoOnly=True)
-                
-                self.debugIteration(smoothedImage, inputTensor,diff, albedoVertexRender, lightingVertexRender, self.debugDir + '/debug_step2/E_photoloss/photoloss_' + str(iter)) # custom made
+                self.debugIteration(smoothedImage, inputTensor,diff, albedoVertexRender, lightingVertexRender, self.debugDir + '/debug_step2/F_refactor/_' + str(iter)) # custom made
                 # also save obj
                 cameraNormals = self.pipeline.morphableModel.computeNormals(cameraVerts) # only used of obj (might be too slow)
                 for i in range(inputTensor.shape[0]):
-                    saveObj(self.debugDir + '/mesh/' + 'debug2_iter' + str(iter)+'.obj',
+                    saveObj(self.debugDir + '/mesh/' + 'step2_iter' + str(iter)+'.obj',
                             'material' + str(iter) + '.mtl',
                             cameraVerts[i],
                             self.pipeline.faces32,
@@ -432,17 +405,21 @@ class Optimizer:
                 print(iter, ' => Loss:', loss.item())
 
             if self.config.debugFrequency > 0 and  iter % self.config.debugFrequency == 0:
-                self.debugFrame(smoothedImage, inputTensor, vDiffTextures, vSpecTextures, vRoughTextures, self.debugDir + 'debug2_iter' + str(iter))
+                self.debugFrame(smoothedImage, inputTensor, vDiffTextures, vSpecTextures, vRoughTextures, self.debugDir + 'step3_iter' + str(iter))
+                
+                lightingVertexRender = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo, lightingOnly=True)
+                albedoVertexRender = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo, albedoOnly=True)
+                self.debugIteration(smoothedImage, inputTensor,diff, albedoVertexRender, lightingVertexRender, self.debugDir + '/debug_step2/F_refactor/_' + str(iter)) # custom made
                 # also save obj
-                # cameraNormals = self.pipeline.morphableModel.computeNormals(cameraVerts) # only used of obj (might be too slow)
-                # for i in range(inputTensor.shape[0]):
-                #     saveObj(self.debugDir + '/mesh' + 'debug3_iter' + str(iter)+'.obj',
-                #             'material' + str(iter) + '.mtl',
-                #             cameraVerts[i],
-                #             self.pipeline.faces32,
-                #             cameraNormals[i],
-                #             self.pipeline.morphableModel.uvMap,
-                #             self.debugDir + 'diffuseMap_' + str(self.getTextureIndex(i)) + '.png')
+                cameraNormals = self.pipeline.morphableModel.computeNormals(cameraVerts) # only used of obj (might be too slow)
+                for i in range(inputTensor.shape[0]):
+                    saveObj(self.debugDir + '/mesh/' + 'step2_iter' + str(iter)+'.obj',
+                            'material' + str(iter) + '.mtl',
+                            cameraVerts[i],
+                            self.pipeline.faces32,
+                            cameraNormals[i],
+                            self.pipeline.morphableModel.uvMap,
+                            self.debugDir + 'diffuseMap_' + str(self.getTextureIndex(i)) + '.png')
         self.plotLoss(losses, 2, self.outputDir + 'checkpoints/stage3_loss.png')
 
         self.vEnhancedDiffuse = vDiffTextures.detach().clone()
@@ -475,17 +452,75 @@ class Optimizer:
 
 
         self.pipeline.renderer.samples = samples
+        images = self.pipeline.render(None, vDiffTextures, vSpecTextures, vRoughTextures)
+
+        diffuseAlbedo = self.pipeline.render(diffuseTextures=vDiffTextures, renderAlbedo=True)
+        specularAlbedo = self.pipeline.render(diffuseTextures=vSpecTextures, renderAlbedo=True)
+        roughnessAlbedo = self.pipeline.render(diffuseTextures=vRoughTextures.repeat(1, 1, 1, 3), renderAlbedo=True)
+        illum = self.pipeline.render(diffuseTextures=torch.ones_like(vDiffTextures), specularTextures=torch.zeros_like(vDiffTextures))
+
+        for i in range(diffuseAlbedo.shape[0]):
+            saveObj(outputDir + prefix + '/mesh' + str(i) + '.obj',
+                    'material' + str(i) + '.mtl',
+                    cameraVerts[i],
+                    self.pipeline.faces32,
+                    cameraNormals[i],
+                    self.pipeline.morphableModel.uvMap,
+                    prefix + 'diffuseMap_' + str(self.getTextureIndex(i)) + '.png')
+
+            envMaps = self.pipeline.sh.toEnvMap(self.pipeline.vShCoeffs, self.config.smoothSh) #smooth
+            ext = '.png'
+            if self.config.saveExr:
+                ext = '.exr'
+            saveImage(envMaps[i], outputDir + '/envMap_' + str(i) + ext)
+
+            #saveImage(diffuseAlbedo[self.getTextureIndex(i)],  outputDir + prefix +  'diffuse_' + str(self.getTextureIndex(i)) + '.png')
+            #saveImage(specularAlbedo[self.getTextureIndex(i)], outputDir + prefix + 'specular_' + str(self.getTextureIndex(i)) + '.png')
+            #saveImage(roughnessAlbedo[self.getTextureIndex(i)], outputDir + prefix + 'roughness_' + str(self.getTextureIndex(i)) + '.png')
+            #saveImage(illum[i], outputDir + prefix + 'illumination_' + str(i) + '.png')
+            #saveImage(images[i], outputDir + prefix + 'finalReconstruction_' + str(i) + '.png')
+            overlay = overlayImage(inputTensor[i], images[i])
+            #saveImage(overlay, outputDir + '/overlay_' + str(i) + '.png')
+
+            renderAll = torch.cat([torch.cat([inputTensor[i], torch.ones_like(images[i])[..., 3:]], dim = -1),
+                           torch.cat([overlay.to(self.device), torch.ones_like(images[i])[..., 3:]], dim = -1),
+                           images[i],
+                           illum[i],
+                           diffuseAlbedo[self.getTextureIndex(i)],
+                           specularAlbedo[self.getTextureIndex(i)],
+                          roughnessAlbedo[self.getTextureIndex(i)]], dim=1)
+            saveImage(renderAll, outputDir + '/render_' + str(i) + '.png')
+
+            saveImage(vDiffTextures[self.getTextureIndex(i)], outputDir + prefix + 'diffuseMap_' + str(self.getTextureIndex(i)) + '.png')
+            saveImage(vSpecTextures[self.getTextureIndex(i)], outputDir + prefix + 'specularMap_' + str(self.getTextureIndex(i)) + '.png')
+            saveImage(vRoughTextures[self.getTextureIndex(i)].repeat(1, 1, 3), outputDir + prefix  + 'roughnessMap_' + str(self.getTextureIndex(i)) + '.png')
+
+    def saveOutputVertexBased(self, outputDir = None, prefix = ''):
+        if outputDir is None:
+            outputDir = self.outputDir
+            mkdir_p(outputDir)
+
+        print("saving to: '", outputDir, "'. hold on... ", file=sys.stderr, flush=True)
+        outputDir += '/' #use join
+
+        inputTensor = torch.pow(self.inputImage.tensor, self.inputImage.gamma)
+        vDiffTextures = self.vEnhancedDiffuse
+        vSpecTextures = self.vEnhancedSpecular
+        vRoughTextures = self.vEnhancedRoughness
+        vertices, diffAlbedo, specAlbedo = self.pipeline.morphableModel.computeShapeAlbedo(self.pipeline.vShapeCoeff, self.pipeline.vExpCoeff, self.pipeline.vAlbedoCoeff)
+        cameraVerts = self.pipeline.camera.transformVertices(vertices, self.pipeline.vTranslation, self.pipeline.vRotation)
+        cameraNormals = self.pipeline.morphableModel.computeNormals(cameraVerts)
+
+        if vDiffTextures is None:
+            vDiffTextures = self.pipeline.morphableModel.generateTextureFromAlbedo(diffAlbedo)
+            vSpecTextures = self.pipeline.morphableModel.generateTextureFromAlbedo(specAlbedo)
+            vRoughTextures = self.pipeline.vRoughness
+
         images = self.pipeline.renderVertexBased(None, diffAlbedo, specAlbedo)
 
         # usually we render with pyredner and there is a difference, in our case since our vertex-based implementation has only one type of render, this will just give us the same image every times
-        # TODO a renderVertexBased Albedo version that takes this variation
-        # diffuseAlbedo = self.pipeline.render(diffuseTextures=vDiffTextures, renderAlbedo=True, vertexBased=True)
-        # specularAlbedo = self.pipeline.render(diffuseTextures=vSpecTextures, renderAlbedo=True, vertexBased=True)
-        # roughnessAlbedo = self.pipeline.render(diffuseTextures=vRoughTextures.repeat(1, 1, 1, 3), renderAlbedo=True, vertexBased=True)
-        # illum = self.pipeline.render(diffuseTextures=torch.ones_like(vDiffTextures), specularTextures=torch.zeros_like(vDiffTextures),vertexBased=True)
         diffuseAlbedo = self.pipeline.renderVertexBased(None, diffAlbedo, specAlbedo,albedoOnly=True)
-        
-        illum = self.pipeline.renderVertexBased(None, diffAlbedo, specAlbedo,albedoOnly=True)
+        illum = self.pipeline.renderVertexBased(None, diffAlbedo, specAlbedo,lightingOnly=True)
         for i in range(diffuseAlbedo.shape[0]):
             saveObj(outputDir + prefix + '/mesh' + str(i) + '.obj',
                     'material' + str(i) + '.mtl',
@@ -502,8 +537,6 @@ class Optimizer:
             saveImage(envMaps[i], outputDir + '/envMap_' + str(i) + ext)
 
             saveImage(diffuseAlbedo[self.getTextureIndex(i)],  outputDir + prefix +  'diffuse_' + str(self.getTextureIndex(i)) + '.png')
-            # saveImage(specularAlbedo[self.getTextureIndex(i)], outputDir + prefix + 'specular_' + str(self.getTextureIndex(i)) + '.png')
-            # saveImage(roughnessAlbedo[self.getTextureIndex(i)], outputDir + prefix + 'roughness_' + str(self.getTextureIndex(i)) + '.png')
             saveImage(illum[i], outputDir + prefix + 'illumination_' + str(i) + '.png')
             saveImage(images[i], outputDir + prefix + 'finalReconstruction_' + str(i) + '.png')
             overlay = overlayImage(inputTensor[i], images[i])
@@ -519,7 +552,7 @@ class Optimizer:
             saveImage(vDiffTextures[self.getTextureIndex(i)], outputDir + prefix + 'diffuseMap_' + str(self.getTextureIndex(i)) + '.png')
             saveImage(vSpecTextures[self.getTextureIndex(i)], outputDir + prefix + 'specularMap_' + str(self.getTextureIndex(i)) + '.png')
             saveImage(vRoughTextures[self.getTextureIndex(i)].repeat(1, 1, 3), outputDir + prefix  + 'roughnessMap_' + str(self.getTextureIndex(i)) + '.png')
-
+    
     def run(self, imagePathOrDir, sharedIdentity = False, checkpoint = None, doStep1 = True, doStep2 = True, doStep3 = True):
         '''
         run optimization on given path (can be a directory that contains images with same resolution or a direct path to an image)
@@ -545,16 +578,16 @@ class Optimizer:
         if doStep1:
             self.runStep1()
             if self.config.saveIntermediateStage:
-                self.saveOutput(self.config.rtSamples, self.outputDir + '/outputStage1', prefix='stage1_')
+                self.saveOutputVertexBased(self.outputDir + '/outputStage1', prefix='stage1_')
         if doStep2:
             self.runStep2()
             if self.config.saveIntermediateStage:
-                self.saveOutput(self.config.rtSamples, self.outputDir + '/outputStage2', prefix='stage2_')
+                self.saveOutputVertexBased(self.outputDir + '/outputStage2', prefix='stage2_')
         if doStep3:
             self.runStep3()
         end = time.time()
         print("took {:.2f} minutes to optimize".format((end - start) / 60.), file=sys.stderr, flush=True)
-        self.saveOutput(self.config.rtSamples, self.outputDir)
+        self.saveOutputVertexBased(self.outputDir)
     
 if __name__ == "__main__":
 
