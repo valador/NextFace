@@ -2,16 +2,11 @@ import math
 from sphericalharmonics import SphericalHarmonics
 from morphablemodel import MorphableModel
 from renderer import Renderer
+from rendererMitsuba import RendererMitsuba
 from camera import Camera
 from customRenderer import *
 from utils import *
-from image import saveImage
-import matplotlib.pyplot as plt
-import torchvision.transforms as transforms
-from torchvision.transforms import GaussianBlur
-from PIL import Image
-from mpl_toolkits.mplot3d import Axes3D
-import polyscope as ps
+
 class Pipeline:
 
     def __init__(self,  config):
@@ -38,6 +33,7 @@ class Pipeline:
                                              device = self.device
                                              )
         self.renderer = Renderer(config.rtTrainingSamples, 1, self.device)
+        self.rendererMitsuba = RendererMitsuba(config.rtTrainingSamples, config.bounces, self.device)
         self.uvMap = self.morphableModel.uvMap.clone()
         self.uvMap[:, 1] = 1.0 - self.uvMap[:, 1]
         self.faces32 = self.morphableModel.faces.to(torch.int32).contiguous()
@@ -168,7 +164,52 @@ class Pipeline:
         images = self.computeVertexImage(cameraVerts, vertexColors, normals, debug=False, interpolation=False)
                 
         return images
-    
+    def renderMitsuba(self, cameraVerts = None, diffuseTextures = None, specularTextures = None, roughnessTextures = None, renderAlbedo = False):
+        '''
+        ray trace an image given camera vertices and corresponding textures
+        :param cameraVerts: camera vertices tensor [n, verticesNumber, 3]
+        :param diffuseTextures: diffuse textures tensor [n, texRes, texRes, 3]
+        :param specularTextures: specular textures tensor [n, texRes, texRes, 3]
+        :param roughnessTextures: roughness textures tensor [n, texRes, texRes, 1]
+        :param renderAlbedo: if True render albedo else ray trace image
+        :param vertexBased: if True we render by vertex instead of ray tracing
+        :return: ray traced images [n, resX, resY, 4]
+        '''
+        
+        if cameraVerts is None :
+            vertices, diffAlbedo, specAlbedo = self.morphableModel.computeShapeAlbedo(self.vShapeCoeff, self.vExpCoeff, self.vAlbedoCoeff)
+            cameraVerts = self.camera.transformVertices(vertices, self.vTranslation, self.vRotation)
+
+        #compute normals
+        normals = self.morphableModel.meshNormals.computeNormals(cameraVerts)
+
+        if diffuseTextures is None:
+            diffuseTextures = self.morphableModel.generateTextureFromAlbedo(diffAlbedo)
+
+        if specularTextures is None:
+            specularTextures = self.morphableModel.generateTextureFromAlbedo(specAlbedo)
+
+        if roughnessTextures is None:
+            roughnessTextures  = self.vRoughness
+
+        envMaps = self.sh.toEnvMap(self.vShCoeffs)
+
+        assert(envMaps.dim() == 4 and envMaps.shape[-1] == 3)
+        assert (cameraVerts.dim() == 3 and cameraVerts.shape[-1] == 3)
+        assert (diffuseTextures.dim() == 4 and diffuseTextures.shape[1] == diffuseTextures.shape[2] == self.morphableModel.getTextureResolution() and diffuseTextures.shape[-1] == 3)
+        assert (specularTextures.dim() == 4 and specularTextures.shape[1] == specularTextures.shape[2] == self.morphableModel.getTextureResolution() and specularTextures.shape[-1] == 3)
+        assert (roughnessTextures.dim() == 4 and roughnessTextures.shape[1] == roughnessTextures.shape[2] == self.morphableModel.getTextureResolution() and roughnessTextures.shape[-1] == 1)
+        assert(cameraVerts.shape[0] == envMaps.shape[0])
+        assert (diffuseTextures.shape[0] == specularTextures.shape[0] == roughnessTextures.shape[0])
+
+        scene = self.rendererMitsuba.buildScenes(cameraVerts, self.faces32, normals, self.uvMap, diffuseTextures, specularTextures, torch.clamp(roughnessTextures, 1e-20, 10.0), self.vFocals, envMaps)
+        # if renderAlbedo:
+        #     images = self.rendererMitsuba.renderAlbedo(scenes)
+        # else:
+        images = self.rendererMitsuba.render(scene)
+                
+        return images
+   
     def landmarkLoss(self, cameraVertices, landmarks, focals, cameraCenters,  debugDir = None):
         '''
         calculate scalar loss between vertices in camera space and 2d landmarks pixels

@@ -69,6 +69,7 @@ class Optimizer:
         handle = open(outputFileName, 'wb')
         pickle.dump(dict, handle, pickle.HIGHEST_PROTOCOL)
         handle.close()
+        
 
     def loadParameters(self, pickelFileName):
         handle = open(pickelFileName, 'rb')
@@ -302,7 +303,8 @@ class Optimizer:
             diffuseTextures = self.pipeline.morphableModel.generateTextureFromAlbedo(diffAlbedo)
             specularTextures = self.pipeline.morphableModel.generateTextureFromAlbedo(specAlbedo)
 
-            images = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo)
+            # images = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo)
+            images = self.pipeline.renderMitsuba(cameraVerts, diffuseTextures, specularTextures)
             mask = images[..., 3:] # extract alpha channel 
             smoothedImage = smoothImage(images[..., 0:3], self.smoothing)
             diff = mask * (smoothedImage - inputTensor).abs()

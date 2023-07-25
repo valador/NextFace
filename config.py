@@ -56,6 +56,7 @@ class Config:
 
 		self.rtSamples = 500 #the number of ray tracer samples to render the final output
 		self.rtTrainingSamples = 8  # number of ray tracing to use during training
+		self.bounces = 2 # number of bounces
 	def fillFromDicFile(self, filePath):
 		'''
 		overwrite default config
