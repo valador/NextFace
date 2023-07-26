@@ -206,9 +206,11 @@ class Pipeline:
         # if renderAlbedo:
         #     images = self.rendererMitsuba.renderAlbedo(scenes)
         # else:
-        images = self.rendererMitsuba.render(scene)
-                
-        return images
+        # TODO should take a texture as param instead of filepath 
+        # TODO mitsuba should generate an alpha channel
+        image = self.rendererMitsuba.render(scene=scene)
+        
+        return image
    
     def landmarkLoss(self, cameraVertices, landmarks, focals, cameraCenters,  debugDir = None):
         '''

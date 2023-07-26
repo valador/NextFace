@@ -1,6 +1,8 @@
 import torch
 import math
 import mitsuba as mi
+from mitsuba.scalar_rgb import Transform4f as T
+
 import drjit as dr
 # def rayTrace(scene,
 #              channels,
@@ -86,7 +88,7 @@ class RendererMitsuba:
         :param envMap: [n, resX, resY, 3]
         :return: return mitsuba scenes
         '''
-        assert(vertices.dim() == 3 and vertices.shape[-1] == 3 and normal.dim() == 3 and normal.shape[-1] == 3)
+        assert (vertices.dim() == 3 and vertices.shape[-1] == 3 and normal.dim() == 3 and normal.shape[-1] == 3)
         assert (indices.dim() == 2 and indices.shape[-1] == 3)
         assert (uv.dim() == 2 and uv.shape[-1] == 2)
         assert (diffuseTexture.dim() == 4 and diffuseTexture.shape[-1] == 3 and
@@ -103,48 +105,98 @@ class RendererMitsuba:
         self.specularTexture = specularTexture
         self.roughnessTexture = roughnessTexture
        # GENERATE MESH
-        self.mesh = mi.Mesh(
-            "my_mesh",
-            vertex_count=vertices.shape[1],
-            face_count=vertices.shape[1] - 1,
-            has_vertex_normals=False,
-            has_vertex_texcoords=False,
-        )
-        mesh_params = mi.traverse(self.mesh)
+        # self.mesh = mi.Mesh(
+        #     "my_mesh",
+        #     vertex_count=vertices.shape[1],
+        #     face_count=vertices.shape[1] - 1,
+        #     has_vertex_normals=False,
+        #     has_vertex_texcoords=False,
+        # )
+        # mesh_params = mi.traverse(self.mesh)
         # REVIEW does this slow down the code
         
         # vertices_np = vertices.squeeze(0).detach().cpu().numpy()
         # faces_np = indices.detach().cpu().numpy()
         # mesh_params["vertex_positions"] = dr.ravel(mi.Point3f(vertices_np))
-        mesh_params["vertex_positions"] = vertices
-        print('faces')
-        mesh_params["faces"] = indices.torch()
-        print('update')
-        print(mesh_params.update())
+        # mesh_params["vertex_positions"] = vertices
+        # print('faces')
+        # mesh_params["faces"] = indices.torch()
+        # print('update')
+        # print(mesh_params.update())
         # mesh_params.update()
-        #Texture 
-        # mi.TensorXf(mi.Bitmap(f).convert(mi.Bitmap.PixelFormat.RGB, mi.Struct.Type.Float32))
-        # for f in filenames
+        
         # https://mitsuba.readthedocs.io/en/stable/src/inverse_rendering/pytorch_mitsuba_interoperability.html
         
-        return self.loadScene()
-    
-    def loadScene(self):
-        scene = mi.load_dict({
-            "type": "scene",
-            "integrator": {"type": "path"},
-            "sensor": {
-                "type": "perspective",
-                "near_clip": self.near_clip,
-                "far_clip": self.far_clip,
-                "to_world": mi.ScalarTransform4f.look_at(origin=[1, 1, 1],
-                                                        target=[0, 0, 0],
-                                                        up=[0, 0, 1])
+        return mi.load_dict({
+            'type': 'scene',
+            'integrator': {'type': 'prb'},
+            'sensor':  {
+                'type': 'perspective',
+                'to_world': T.look_at(
+                                origin=(0, 0, -2),
+                                target=(0, 0, 0),
+                                up=(0, -1, 0)
+                            ),
+                'fov': 60,
+                'film': {
+                    'type': 'hdrfilm',
+                    'width':  self.screenWidth,
+                    'height': self.screenHeight,
+                },
             },
-            "light": {"type": "constant"},
-            "mesh": self.mesh
+            'textured_plane': {
+                'type': 'rectangle',
+                'to_world': T.scale(1.2),
+                'bsdf': {
+                    'type': 'twosided',
+                    'nested': {
+                        'type': 'diffuse',
+                        'reflectance': {
+                            'type': 'bitmap',
+                            'filename': "C:/Users/AQ14980/Desktop/repos/NextFace/output/Bikerman.jpg/diffuseMap_0.png"
+                        },
+                    }
+                }
+            },
+            'glass_sphere': {
+                'type': 'sphere',
+                'to_world': T.translate([0, 0, -1]).scale(0.45),
+                'bsdf': {
+                    'type': 'dielectric',
+                    'int_ior': 1.06,
+                },
+            },
+            'light': {
+                'type': 'constant',
+            }
         })
-        return scene
+
+    @dr.wrap_ad(source='torch', target='drjit')
+    def render_texture(scene, spp=256, seed=1):
+        """take a texture, update the scene and render it. uses a wrap ad for backpropagation and for gradients
+        we are adding a mitsuba computations in a pytorch pipeline
+
+        Args:
+            texture (tensor): 
+            scene (mitsuba scene ) : scene
+            spp (int, optional): nb of samples. Defaults to 256.
+            seed (int, optional): random ?. Defaults to 1.
+
+        Returns:
+            _type_: _description_
+        """
+        
+        filename = "./output/Bikerman.jpg/diffuseMap_0.png"
+        mi_texture =  mi.TensorXf(mi.Bitmap(filename).convert(mi.Bitmap.PixelFormat.RGB, mi.Struct.Type.Float32))
+        params = mi.traverse(scene)
+        key = 'textured_plane.bsdf.brdf_0.reflectance.data'
+        params[key] = mi_texture
+        params.update()
+        image = mi.render(scene, params, spp=spp, seed=seed, seed_grad=seed+1)
+        
+        return image
+        
+        
     # def renderAlbedo(self, scenes):
     #     '''
     #     render albedo of given pyredner scenes
@@ -166,7 +218,21 @@ class RendererMitsuba:
         :return: ray traced images [n, screenWidth, screenHeight, 4]
         '''
         self.counter += 1
-        return mi.render(scene)
-        # return mi.render_torch(scene)
+        return RendererMitsuba.render_texture(scene)
     
-    
+#generate model
+class Model1(torch.nn.Module):
+    def __init__(self):
+        super(Model1, self).__init__()
+        self.layers = torch.nn.Sequential(
+            torch.nn.Linear(256**2, 256**2),
+            torch.nn.Sigmoid(),
+        )
+
+    def forward(self, texture):
+        texture = texture.torch()
+        # Evaluate the model one channel as a time
+        rgb = [self.layers(texture[:, :, i].view(-1)) for i in range(3)]
+        # Reconstruct and return the 3D tensor
+        return torch.stack([c.view(256, 256) for c in rgb], dim=2)
+

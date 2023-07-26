@@ -304,10 +304,13 @@ class Optimizer:
             specularTextures = self.pipeline.morphableModel.generateTextureFromAlbedo(specAlbedo)
 
             # images = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo)
-            images = self.pipeline.renderMitsuba(cameraVerts, diffuseTextures, specularTextures)
-            mask = images[..., 3:] # extract alpha channel 
-            smoothedImage = smoothImage(images[..., 0:3], self.smoothing)
-            diff = mask * (smoothedImage - inputTensor).abs()
+            # IMAGE IS [X, Y, 3]
+            image = self.pipeline.renderMitsuba(cameraVerts, diffuseTextures, specularTextures)
+            # todo change photoloss
+            # mask = images[..., 3:] # extract alpha channel 
+            # smoothedImage = smoothImage(images[..., 0:3], self.smoothing)
+            # diff = mask * (smoothedImage - inputTensor).abs()
+            diff = (image - inputTensor).abs()
             #photoLoss =  diff.mean(dim=-1).sum() / float(self.framesNumber)
             photoLoss = 1000.* diff.mean()
             landmarksLoss = self.config.weightLandmarksLossStep2 *  self.landmarkLoss(cameraVerts, self.landmarks)
@@ -332,7 +335,7 @@ class Optimizer:
                 
                 lightingVertexRender = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo, lightingOnly=True)
                 albedoVertexRender = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo, albedoOnly=True)
-                self.debugIteration(smoothedImage, inputTensor,diff, albedoVertexRender, lightingVertexRender, self.debugDir + '/debug_step2/F_refactor/_' + str(iter)) # custom made
+                self.debugIteration(image, inputTensor,diff, albedoVertexRender, lightingVertexRender, self.debugDir + '/debug_step2/mitsuba/_' + str(iter)) # custom made
                 # also save obj
                 cameraNormals = self.pipeline.morphableModel.computeNormals(cameraVerts) # only used of obj (might be too slow)
                 for i in range(inputTensor.shape[0]):
