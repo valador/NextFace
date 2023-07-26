@@ -126,14 +126,29 @@ class RendererMitsuba:
         # mesh_params.update()
         
         # https://mitsuba.readthedocs.io/en/stable/src/inverse_rendering/pytorch_mitsuba_interoperability.html
-        
+        self.mesh = mi.load_dict({
+            "type": "obj",
+            "filename": "C:/Users/AQ14980/Desktop/repos/NextFace/output/Bikerman.jpg/mesh0.obj",
+            "face_normals": False,
+            "to_world": mi.ScalarTransform4f.rotate([0, 0, 1], angle=10),
+            'bsdf': {
+                    'type': 'twosided',
+                    'nested': {
+                        'type': 'diffuse',
+                        'reflectance': {
+                            'type': 'bitmap',
+                            'filename': "C:/Users/AQ14980/Desktop/repos/NextFace/output/Bikerman.jpg/diffuseMap_0.png"
+                        },
+                    }
+                }
+        })
         return mi.load_dict({
             'type': 'scene',
             'integrator': {'type': 'prb'},
             'sensor':  {
                 'type': 'perspective',
                 'to_world': T.look_at(
-                                origin=(0, 0, -2),
+                                origin=(0, 0, -5),
                                 target=(0, 0, 0),
                                 up=(0, -1, 0)
                             ),
@@ -144,57 +159,11 @@ class RendererMitsuba:
                     'height': self.screenHeight,
                 },
             },
-            'textured_plane': {
-                'type': 'rectangle',
-                'to_world': T.scale(1.2),
-                'bsdf': {
-                    'type': 'twosided',
-                    'nested': {
-                        'type': 'diffuse',
-                        'reflectance': {
-                            'type': 'bitmap',
-                            'filename': "C:/Users/AQ14980/Desktop/repos/NextFace/output/Bikerman.jpg/diffuseMap_0.png"
-                        },
-                    }
-                }
-            },
-            'glass_sphere': {
-                'type': 'sphere',
-                'to_world': T.translate([0, 0, -1]).scale(0.45),
-                'bsdf': {
-                    'type': 'dielectric',
-                    'int_ior': 1.06,
-                },
-            },
+            "mesh":self.mesh,
             'light': {
                 'type': 'constant',
             }
         })
-
-    @dr.wrap_ad(source='torch', target='drjit')
-    def render_texture(scene, spp=256, seed=1):
-        """take a texture, update the scene and render it. uses a wrap ad for backpropagation and for gradients
-        we are adding a mitsuba computations in a pytorch pipeline
-
-        Args:
-            texture (tensor): 
-            scene (mitsuba scene ) : scene
-            spp (int, optional): nb of samples. Defaults to 256.
-            seed (int, optional): random ?. Defaults to 1.
-
-        Returns:
-            _type_: _description_
-        """
-        
-        filename = "./output/Bikerman.jpg/diffuseMap_0.png"
-        mi_texture =  mi.TensorXf(mi.Bitmap(filename).convert(mi.Bitmap.PixelFormat.RGB, mi.Struct.Type.Float32))
-        params = mi.traverse(scene)
-        key = 'textured_plane.bsdf.brdf_0.reflectance.data'
-        params[key] = mi_texture
-        params.update()
-        image = mi.render(scene, params, spp=spp, seed=seed, seed_grad=seed+1)
-        
-        return image
         
         
     # def renderAlbedo(self, scenes):
@@ -219,6 +188,31 @@ class RendererMitsuba:
         '''
         self.counter += 1
         return RendererMitsuba.render_texture(scene)
+    # STANDALONE because of wrap_ad
+    @dr.wrap_ad(source='torch', target='drjit')
+    def render_texture(scene, spp=256, seed=1):
+        """take a texture, update the scene and render it. uses a wrap ad for backpropagation and for gradients
+        we are adding a mitsuba computations in a pytorch pipeline
+
+        Args:
+            texture (tensor): 
+            scene (mitsuba scene ) : scene
+            spp (int, optional): nb of samples. Defaults to 256.
+            seed (int, optional): random ?. Defaults to 1.
+
+        Returns:
+            tensorX
+        """
+        
+        filename = "./output/Bikerman.jpg/diffuseMap_0.png"
+        mi_texture =  mi.TensorXf(mi.Bitmap(filename).convert(mi.Bitmap.PixelFormat.RGB, mi.Struct.Type.Float32))
+        params = mi.traverse(scene)
+        key = 'mesh.bsdf.brdf_0.reflectance.data'
+        params[key] = mi_texture
+        params.update()
+        image = mi.render(scene, params, spp=spp, seed=seed, seed_grad=seed+1)
+        
+        return image
     
 #generate model
 class Model1(torch.nn.Module):
