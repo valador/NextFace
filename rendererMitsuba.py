@@ -115,19 +115,16 @@ class RendererMitsuba:
         self.mesh = mi.load_dict({
             "type": "obj",
             "filename": "C:/Users/AQ14980/Desktop/repos/NextFace/output/Bikerman.jpg/debug/mesh/debug2_iter1000.obj",
-            "face_normals": False,
+            "face_normals": True,
             'bsdf': {
-                    'type': 'twosided',
-                    'nested': {
-                        'type': 'diffuse',
-                        'reflectance': {
-                            'type': 'bitmap',
-                            'filename': "C:/Users/AQ14980/Desktop/repos/NextFace/output/Bikerman.jpg/diffuseMap_0.png"
-                        },
-                    }
+                'type': 'diffuse',
+                'reflectance': {
+                    'type': 'bitmap',
+                    'filename': "C:/Users/AQ14980/Desktop/repos/NextFace/output/Bikerman.jpg/specularMap_0.png"
                 }
+            }
         })
-
+        
         # ________________________________________________________________________
         fov = torch.tensor([360.0 * math.atan(self.screenWidth / (2.0 * focal[0])) / math.pi])  # calculate camera field of view from image size
         
@@ -161,6 +158,8 @@ class RendererMitsuba:
         params["mesh.faces"] = dr.ravel(mi.TensorXf(indices.to(torch.float32)))
         params["mesh.vertex_normals"] = dr.ravel(mi.TensorXf(normal.squeeze(0)))
         params["mesh.vertex_texcoords"] = dr.ravel(mi.TensorXf(uv))
+        # reflance data is [ X Y 3] so we convert our diffuseTexture to it 
+        params["mesh.bsdf.reflectance.data"] = mi.TensorXf(diffuseTexture.squeeze(0))
         params.update()  
         
         return scene
@@ -189,16 +188,9 @@ class RendererMitsuba:
         Returns:
             tensorX
         """
-        
-        filename = "./output/Bikerman.jpg/diffuseMap_0.png"
-        mi_texture =  mi.TensorXf(mi.Bitmap(filename).convert(mi.Bitmap.PixelFormat.RGB, mi.Struct.Type.Float32))
         params = mi.traverse(scene)
-        key = 'mesh.bsdf.brdf_0.reflectance.data'
-        params[key] = mi_texture
-        params.update()
-        image = mi.render(scene, params, spp=spp, seed=seed, seed_grad=seed+1)
+        return mi.render(scene, params, spp=spp, seed=seed, seed_grad=seed+1)
         
-        return image
     
 #generate model
 class Model1(torch.nn.Module):
