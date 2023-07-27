@@ -100,27 +100,25 @@ class RendererMitsuba:
         assert(diffuseTexture.shape[0] == specularTexture.shape[0] == roughnessTexture.shape[0])
         assert (diffuseTexture.shape[0] == 1 or diffuseTexture.shape[0] == vertices.shape[0])
         sharedTexture = True if diffuseTexture.shape[0] == 1 else False
-       # GENERATE Textures
+        # GENERATE Textures
         self.diffuseTexture = diffuseTexture
         self.specularTexture = specularTexture
         self.roughnessTexture = roughnessTexture
         
-       # GENERATE MESH
-       # TODO add vertices,
-       # TODO faces, 
-       # TODO normals, 
-       # TODO textures, 
-       # TODO uv
-        # generate mesh
+        # GENERATE MESH
         self.mesh = mi.load_dict({
             "type": "obj",
             "filename": "C:/Users/AQ14980/Desktop/repos/NextFace/output/Bikerman.jpg/debug/mesh/debug2_iter1000.obj",
             "face_normals": True,
             'bsdf': {
-                'type': 'diffuse',
-                'reflectance': {
+                'type': 'principled',
+                'base_color': {
                     'type': 'bitmap',
                     'filename': "C:/Users/AQ14980/Desktop/repos/NextFace/output/Bikerman.jpg/specularMap_0.png"
+                },                
+                'roughness':{
+                    'type': 'bitmap',
+                    'filename': "C:/Users/AQ14980/Desktop/repos/NextFace/output/sarah.jpg/roughnessMap_0.png"
                 }
             }
         })
@@ -159,7 +157,11 @@ class RendererMitsuba:
         params["mesh.vertex_normals"] = dr.ravel(mi.TensorXf(normal.squeeze(0)))
         params["mesh.vertex_texcoords"] = dr.ravel(mi.TensorXf(uv))
         # reflance data is [ X Y 3] so we convert our diffuseTexture to it 
-        params["mesh.bsdf.reflectance.data"] = mi.TensorXf(diffuseTexture.squeeze(0))
+        # update BSDF https://mitsuba.readthedocs.io/en/stable/src/generated/plugins_bsdfs.html#smooth-diffuse-material-diffuse
+        params["mesh.bsdf.base_color.data"] = mi.TensorXf(diffuseTexture.squeeze(0))
+        # params["mesh.bsdf.specular"] = mi.TensorXf(specularTexture.squeeze(0))
+        params["mesh.bsdf.roughness.data"] = mi.TensorXf(roughnessTexture.squeeze(0))
+        
         params.update()  
         
         return scene
