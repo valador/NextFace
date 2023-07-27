@@ -25,7 +25,7 @@ import drjit as dr
 #     # Render each scene in the batch and stack them together
 #     imgs = []
 #     for sc, se in zip(scene, seed):
-#         scene_args = pyredner.RenderFunction.serialize_scene(\
+#         scene_args = pyredner.RenderFunction.serialize_scene(/
 #             scene = sc,
 #             num_samples = num_samples,
 #             max_bounces = max_bounces,
@@ -64,7 +64,7 @@ class RendererMitsuba:
         self.samples = samples
         self.bounces = bounces
         self.device = torch.device(device)
-        self.near_clip = 10.0
+        self.near_clip = 0.01
         self.far_clip = 1000.0
         self.upVector = torch.tensor([0.0, -1.0, 0.0])
         self.counter = 0
@@ -104,33 +104,18 @@ class RendererMitsuba:
         self.diffuseTexture = diffuseTexture
         self.specularTexture = specularTexture
         self.roughnessTexture = roughnessTexture
+        
        # GENERATE MESH
-        # self.mesh = mi.Mesh(
-        #     "my_mesh",
-        #     vertex_count=vertices.shape[1],
-        #     face_count=vertices.shape[1] - 1,
-        #     has_vertex_normals=False,
-        #     has_vertex_texcoords=False,
-        # )
-        # mesh_params = mi.traverse(self.mesh)
-        # REVIEW does this slow down the code
-        
-        # vertices_np = vertices.squeeze(0).detach().cpu().numpy()
-        # faces_np = indices.detach().cpu().numpy()
-        # mesh_params["vertex_positions"] = dr.ravel(mi.Point3f(vertices_np))
-        # mesh_params["vertex_positions"] = vertices
-        # print('faces')
-        # mesh_params["faces"] = indices.torch()
-        # print('update')
-        # print(mesh_params.update())
-        # mesh_params.update()
-        
-        # https://mitsuba.readthedocs.io/en/stable/src/inverse_rendering/pytorch_mitsuba_interoperability.html
+       # TODO add vertices,
+       # TODO faces, 
+       # TODO normals, 
+       # TODO textures, 
+       # TODO uv
+        # generate mesh
         self.mesh = mi.load_dict({
             "type": "obj",
-            "filename": "C:/Users/AQ14980/Desktop/repos/NextFace/output/Bikerman.jpg/mesh0.obj",
+            "filename": "C:/Users/AQ14980/Desktop/repos/NextFace/output/Bikerman.jpg/debug/mesh/debug2_iter1000.obj",
             "face_normals": False,
-            "to_world": mi.ScalarTransform4f.rotate([0, 0, 1], angle=10),
             'bsdf': {
                     'type': 'twosided',
                     'nested': {
@@ -142,21 +127,25 @@ class RendererMitsuba:
                     }
                 }
         })
-        return mi.load_dict({
+
+        # ________________________________________________________________________
+        fov = torch.tensor([360.0 * math.atan(self.screenWidth / (2.0 * focal[0])) / math.pi])  # calculate camera field of view from image size
+        
+        scene = mi.load_dict({
             'type': 'scene',
             'integrator': {'type': 'prb'},
             'sensor':  {
                 'type': 'perspective',
+                'fov': fov.item(),
                 'to_world': T.look_at(
-                                origin=(0, 0, -5),
-                                target=(0, 0, 0),
-                                up=(0, -1, 0)
-                            ),
-                'fov': 60,
+                            origin=(0, 0, 0),
+                            target=(0, 0, 1),
+                            up=(0., -1, 0.)
+                        ),
                 'film': {
                     'type': 'hdrfilm',
                     'width':  self.screenWidth,
-                    'height': self.screenHeight,
+                    'height': self.screenHeight
                 },
             },
             "mesh":self.mesh,
@@ -164,21 +153,17 @@ class RendererMitsuba:
                 'type': 'constant',
             }
         })
+        # update mesh params
+        params = mi.traverse(scene)
+        # # -> [1 N 3] -> [N 3]
+        params["mesh.vertex_positions"] = dr.ravel(mi.TensorXf(vertices.squeeze(0)))
+        # TODO could slow down the whole thing
+        params["mesh.faces"] = dr.ravel(mi.TensorXf(indices.to(torch.float32)))
+        params["mesh.vertex_normals"] = dr.ravel(mi.TensorXf(normal.squeeze(0)))
+        params["mesh.vertex_texcoords"] = dr.ravel(mi.TensorXf(uv))
+        params.update()  
         
-        
-    # def renderAlbedo(self, scenes):
-    #     '''
-    #     render albedo of given pyredner scenes
-    #     :param scenes:  list of pyredner scenes
-    #     :return: albedo images [n, screenWidth, screenHeight, 4]
-    #     '''
-    #     #images =pyredner.render_albedo(scenes, alpha = True, num_samples = self.samples, device = self.device)
-    #     images = renderPathTracing(scenes,
-    #                                channels= [pyredner.channels.diffuse_reflectance, pyredner.channels.alpha],
-    #                                max_bounces = 0,
-    #                                num_samples = self.samples ,
-    #                                device = self.device)
-    #     return images
+        return scene
 
     def render(self, scene):
         '''
@@ -188,6 +173,7 @@ class RendererMitsuba:
         '''
         self.counter += 1
         return RendererMitsuba.render_texture(scene)
+    
     # STANDALONE because of wrap_ad
     @dr.wrap_ad(source='torch', target='drjit')
     def render_texture(scene, spp=256, seed=1):

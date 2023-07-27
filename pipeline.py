@@ -6,7 +6,7 @@ from rendererMitsuba import RendererMitsuba
 from camera import Camera
 from customRenderer import *
 from utils import *
-
+import polyscope as ps
 class Pipeline:
 
     def __init__(self,  config):
@@ -208,6 +208,8 @@ class Pipeline:
         # else:
         # TODO should take a texture as param instead of filepath 
         # TODO mitsuba should generate an alpha channel
+        # DEBUG check where geometry is
+        # self.displayTensorInPolyscope(cameraVerts)
         image = self.rendererMitsuba.render(scene=scene)
         
         return image
@@ -454,6 +456,10 @@ class Pipeline:
         # Reshape scatter_np to [N, 3] for scatter()
         scatter_np = np.squeeze(scatter_np, axis=0) 
         ps.init()
+        ps.set_up_dir('neg_y_up')
+        ps.look_at((0., 0., 0.), (0., 0., 1.))
+        # up -> 0 -1 0
+
         # `my_points` is a Nx3 numpy array
         ps.register_point_cloud("my vertices", scatter_np)
         ps.show()
