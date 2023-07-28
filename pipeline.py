@@ -33,7 +33,7 @@ class Pipeline:
                                              device = self.device
                                              )
         self.renderer = Renderer(config.rtTrainingSamples, 1, self.device)
-        self.rendererMitsuba = RendererMitsuba(config.rtTrainingSamples, config.bounces, self.device)
+        self.rendererMitsuba = RendererMitsuba(config.rtTrainingSamples, config.bounces, self.device, self.vFocals[0])
         self.uvMap = self.morphableModel.uvMap.clone()
         self.uvMap[:, 1] = 1.0 - self.uvMap[:, 1]
         self.faces32 = self.morphableModel.faces.to(torch.int32).contiguous()
@@ -202,17 +202,10 @@ class Pipeline:
         assert(cameraVerts.shape[0] == envMaps.shape[0])
         assert (diffuseTextures.shape[0] == specularTextures.shape[0] == roughnessTextures.shape[0])
 
-        scene = self.rendererMitsuba.buildScenes(cameraVerts, self.faces32, normals, self.uvMap, diffuseTextures, specularTextures, torch.clamp(roughnessTextures, 1e-20, 10.0), self.vFocals, envMaps)
-        # if renderAlbedo:
-        #     images = self.rendererMitsuba.renderAlbedo(scenes)
-        # else:
-        # TODO should take a texture as param instead of filepath 
-        # TODO mitsuba should generate an alpha channel
-        # DEBUG check where geometry is
-        # self.displayTensorInPolyscope(cameraVerts)
-        image = self.rendererMitsuba.render(scene=scene)
+        # TODO mitsuba should generate an alpha channel to do loss only on geometry part of picture
+        scene = self.rendererMitsuba.updateScene(cameraVerts, self.faces32, normals, self.uvMap, diffuseTextures, specularTextures, torch.clamp(roughnessTextures, 1e-20, 10.0), envMaps)
+        return self.rendererMitsuba.render(scene=scene)
         
-        return image
    
     def landmarkLoss(self, cameraVertices, landmarks, focals, cameraCenters,  debugDir = None):
         '''

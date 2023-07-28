@@ -285,17 +285,17 @@ class Optimizer:
         
         
         optimizer = torch.optim.Adam([
-            {'params': self.pipeline.vShCoeffs, 'lr': 0.005},
+            # {'params': self.pipeline.vShCoeffs, 'lr': 0.005},
             {'params': self.pipeline.vAlbedoCoeff, 'lr': 0.007}
         ])
         losses = []
 
         for iter in tqdm.tqdm(range(self.config.iterStep2 + 1)):
-            if iter == 100:
-                optimizer.add_param_group({'params': self.pipeline.vShapeCoeff, 'lr': 0.01})
-                optimizer.add_param_group({'params': self.pipeline.vExpCoeff, 'lr': 0.01})
-                optimizer.add_param_group({'params': self.pipeline.vRotation, 'lr': 0.0001})
-                optimizer.add_param_group({'params': self.pipeline.vTranslation, 'lr': 0.0001})
+            # if iter == 100:
+            #     optimizer.add_param_group({'params': self.pipeline.vShapeCoeff, 'lr': 0.01})
+            #     optimizer.add_param_group({'params': self.pipeline.vExpCoeff, 'lr': 0.01})
+            #     optimizer.add_param_group({'params': self.pipeline.vRotation, 'lr': 0.0001})
+            #     optimizer.add_param_group({'params': self.pipeline.vTranslation, 'lr': 0.0001})
 
             optimizer.zero_grad()
             vertices, diffAlbedo, specAlbedo = self.pipeline.morphableModel.computeShapeAlbedo(self.pipeline.vShapeCoeff, self.pipeline.vExpCoeff, self.pipeline.vAlbedoCoeff)
