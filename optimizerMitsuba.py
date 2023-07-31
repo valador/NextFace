@@ -9,7 +9,8 @@ import argparse
 import pickle
 import tqdm
 import sys
-
+import mitsuba as mi
+import drjit as dr
 class OptimizerMitsuba:
 
     def __init__(self, outputDir, config):
@@ -290,29 +291,39 @@ class OptimizerMitsuba:
             {'params': self.pipeline.vShCoeffs, 'lr': 0.005},
             {'params': self.pipeline.vAlbedoCoeff, 'lr': 0.007}
         ])
+        # LARGE STEPS FOR GEOMETRY 
+        # lambda_ = 25
+        # ls = mi.ad.LargeSteps(params['mesh.vertex_positions'], params['mesh.faces'], lambda_)
+        # # We also use a slighlty modified version of the adam optimizer, that uses a uniform second moment for all parameters. This can be done by setting `uniform=True` when instantiating the optimizer.
+        # optimizerMitsuba = mi.ad.Adam(lr=1e-1, uniform=True)
+        # # init latent variable
+        # optimizerMitsuba['u'] = ls.to_differential(params['mesh.vertex_positions'])
+        # # optimizerMitsuba['u'] = ls.to_differential(params['mesh.faces']) ???
+        # lossMitsuba = mi.Float(0.0)
         losses = []
-
+        # get scene params only once
+        # scene_params = mi.traverse(self.pipeline.rendererMitsuba.scene)
+        
         for iter in tqdm.tqdm(range(self.config.iterStep2 + 1)):
-            # if iter == 100:
-            #     optimizer.add_param_group({'params': self.pipeline.vShapeCoeff, 'lr': 0.01})
-            #     optimizer.add_param_group({'params': self.pipeline.vExpCoeff, 'lr': 0.01})
-            #     optimizer.add_param_group({'params': self.pipeline.vRotation, 'lr': 0.0001})
-            #     optimizer.add_param_group({'params': self.pipeline.vTranslation, 'lr': 0.0001})
-
-            optimizer.zero_grad()
+            if iter == 100:
+                optimizer.add_param_group({'params': self.pipeline.vShapeCoeff, 'lr': 0.01})
+                optimizer.add_param_group({'params': self.pipeline.vExpCoeff, 'lr': 0.01})
+                optimizer.add_param_group({'params': self.pipeline.vRotation, 'lr': 0.0001})
+                optimizer.add_param_group({'params': self.pipeline.vTranslation, 'lr': 0.0001})
+            optimizer.zero_grad() 
             vertices, diffAlbedo, specAlbedo = self.pipeline.morphableModel.computeShapeAlbedo(self.pipeline.vShapeCoeff, self.pipeline.vExpCoeff, self.pipeline.vAlbedoCoeff)
             cameraVerts = self.pipeline.camera.transformVertices(vertices, self.pipeline.vTranslation, self.pipeline.vRotation)
             diffuseTextures = self.pipeline.morphableModel.generateTextureFromAlbedo(diffAlbedo)
             specularTextures = self.pipeline.morphableModel.generateTextureFromAlbedo(specAlbedo)
+            roughTextures = self.pipeline.vRoughness.detach().clone() if self.vEnhancedRoughness is None else self.vEnhancedRoughness.detach().clone()
 
             # images = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo)
-            # IMAGE IS [X, Y, 3]
+            # IMAGE IS [X, Y, 4]
             image = self.pipeline.renderMitsuba(cameraVerts, diffuseTextures, specularTextures)
             # todo change photoloss
-            # mask = images[..., 3:] # extract alpha channel 
-            # smoothedImage = smoothImage(images[..., 0:3], self.smoothing)
-            # diff = mask * (smoothedImage - inputTensor).abs()
-            diff = (image - inputTensor).abs()
+            mask = image[..., 3:] # extract alpha channel 
+            smoothedImage = smoothImage(image[..., 0:3], self.smoothing)
+            diff = mask * (smoothedImage - inputTensor).abs()
             #photoLoss =  diff.mean(dim=-1).sum() / float(self.framesNumber)
             photoLoss = 1000.* diff.mean()
             landmarksLoss = self.config.weightLandmarksLossStep2 *  self.landmarkLoss(cameraVerts, self.landmarks)
@@ -326,18 +337,32 @@ class OptimizerMitsuba:
             losses.append(loss.item())
             loss.backward()
             optimizer.step()
+            # ************************** MITSUBA BACK PROP --- only targets vertices          
+            # Retrieve the vertex positions from the latent variable
+            # params['mesh.vertex_positions'] = ls.from_differential(optimizerMitsuba['u'])
+            # # params['mesh.faces'] = ls.from_differential
+            # params.update()
+
+            # current_img = self.pipeline.renderMitsuba(cameraVerts, diffuseTextures, specularTextures)
+
+            # L1 Loss
+            # loss = dr.mean(dr.abs(current_img - mi.TensorXf(inputTensor)))
+            # dr.backward(loss)
+            # optimizerMitsuba.step()
+            
             if self.verbose:
                 print(iter, ' => Loss:', loss.item(),
                       '. photo Loss:', photoLoss.item(),
                       '. landmarks Loss: ', landmarksLoss.item(),
                       '. regLoss: ', regLoss.item())
+                print(f"Iteration {iter:03d}: Loss mitsuba = {loss[0]:6f}", end='\r')
 
             if self.config.debugFrequency > 0 and iter % self.config.debugFrequency == 0:
-                # self.debugFrame(smoothedImage, inputTensor, vDiffTextures, vSpecTextures, vRoughTextures, self.debugDir + 'step2_iter' + str(iter))
+                self.debugFrame(smoothedImage, inputTensor, diffuseTextures, specularTextures, roughTextures, self.debugDir + '/debug_step2/mitsuba/_' + str(iter))
                 
-                lightingVertexRender = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo, lightingOnly=True)
-                albedoVertexRender = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo, albedoOnly=True)
-                self.debugIteration(image, inputTensor,diff, albedoVertexRender, lightingVertexRender, self.debugDir + '/debug_step2/mitsuba/_' + str(iter)) # custom made
+                # lightingVertexRender = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo, lightingOnly=True)
+                # albedoVertexRender = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo, albedoOnly=True)
+                # self.debugIteration(image, inputTensor,diff, albedoVertexRender, lightingVertexRender, self.debugDir + '/debug_step2/mitsuba/_' + str(iter)) # custom made
                 # also save obj
                 cameraNormals = self.pipeline.morphableModel.computeNormals(cameraVerts) # only used of obj (might be too slow)
                 for i in range(inputTensor.shape[0]):
@@ -459,9 +484,9 @@ class OptimizerMitsuba:
         self.pipeline.renderer.samples = samples
         images = self.pipeline.renderMitsuba(None, vDiffTextures, vSpecTextures, vRoughTextures)
 
-        diffuseAlbedo = self.pipeline.render(diffuseTextures=vDiffTextures, renderAlbedo=True)
-        specularAlbedo = self.pipeline.render(diffuseTextures=vSpecTextures, renderAlbedo=True)
-        roughnessAlbedo = self.pipeline.render(diffuseTextures=vRoughTextures.repeat(1, 1, 1, 3), renderAlbedo=True)
+        diffuseAlbedo = self.pipeline.renderMitsuba(diffuseTextures=vDiffTextures, renderAlbedo=True)
+        specularAlbedo = self.pipeline.renderMitsuba(diffuseTextures=vSpecTextures, renderAlbedo=True)
+        roughnessAlbedo = self.pipeline.renderMitsuba(diffuseTextures=vRoughTextures.repeat(1, 1, 1, 3), renderAlbedo=True)
         illum = self.pipeline.renderMitsuba(diffuseTextures=torch.ones_like(vDiffTextures), specularTextures=torch.zeros_like(vDiffTextures))
 
         for i in range(diffuseAlbedo.shape[0]):

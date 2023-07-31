@@ -7,17 +7,16 @@ import drjit as dr
 
 class RendererMitsuba:
 
-    def __init__(self, samples, bounces, device, focal, screenWidth, screenHeight):
+    def __init__(self, samples, bounces, device, screenWidth, screenHeight):
         self.samples = samples
         self.bounces = bounces
         self.device = torch.device(device)
         self.counter = 0
         self.screenWidth = screenWidth
         self.screenHeight = screenHeight
-        self.fov =  torch.tensor([360.0 * torch.atan(self.screenWidth / (2.0 * focal)) / torch.pi]) # from renderer.py
-        self.scene = self.buildScenes() # init my scene
-        
         mi.set_variant('cuda_ad_rgb')
+        self.scene = self.buildInitialScene() # init my scene
+        
 
     def buildInitialScene(self):
         # Create scene
@@ -29,7 +28,7 @@ class RendererMitsuba:
                 },
             'sensor':  {
                 'type': 'perspective',
-                'fov': self.fov.item(),
+                'fov': 5,
                 'to_world': T.look_at(
                             origin=(0, 0, 0),
                             target=(0, 0, 1),
@@ -66,9 +65,11 @@ class RendererMitsuba:
         
         return self.scene
     
-    def updateScene(self, vertices, indices, normal, uv, diffuseTexture, specularTexture, roughnessTexture, envMap):
+    def updateScene(self, vertices, indices, normal, uv, diffuseTexture, specularTexture, roughnessTexture, focal, envMap):
+        self.fov =  torch.tensor([360.0 * torch.atan(self.screenWidth / (2.0 * focal)) / torch.pi]) # from renderer.py
         
         params = mi.traverse(self.scene)
+        params["sensor.x_fov"] = self.fov.item()
         # update mesh params
         # # -> [1 N 3] -> [N 3]
         params["mesh.vertex_positions"] = dr.ravel(mi.TensorXf(vertices.squeeze(0)))
@@ -87,6 +88,7 @@ class RendererMitsuba:
         params["light.data"] = mi.TensorXf(envMap.squeeze(0))
         
         params.update() 
+        return self.scene
     # STANDALONE because of wrap_ad
     @dr.wrap_ad(source='torch', target='drjit')
     def render_torch_djit(scene, spp=256, seed=1):
@@ -97,8 +99,8 @@ class RendererMitsuba:
            image : tensorX
         """
         scene_params = mi.traverse(scene) # params that should receive gradients !!!
-        dr.enable_grad(scene_params["mesh.vertex_positions"])
-        dr.enable_grad(scene_params["mesh.faces"])
+        # dr.enable_grad(scene_params["mesh.vertex_positions"])
+        # dr.enable_grad(scene_params["mesh.faces"])
         return mi.render(scene, scene_params, spp=spp, seed=seed, seed_grad=seed+1)
         
     def render(self, scene):
@@ -108,4 +110,7 @@ class RendererMitsuba:
             :return: ray traced images [n, screenWidth, screenHeight, 4]
             '''
             self.counter += 1
+            if scene is None:
+                scene = self.scene
+                
             return RendererMitsuba.render_torch_djit(scene)

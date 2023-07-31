@@ -285,17 +285,17 @@ class Optimizer:
         
         
         optimizer = torch.optim.Adam([
-            # {'params': self.pipeline.vShCoeffs, 'lr': 0.005},
+            {'params': self.pipeline.vShCoeffs, 'lr': 0.005},
             {'params': self.pipeline.vAlbedoCoeff, 'lr': 0.007}
         ])
         losses = []
 
         for iter in tqdm.tqdm(range(self.config.iterStep2 + 1)):
-            # if iter == 100:
-            #     optimizer.add_param_group({'params': self.pipeline.vShapeCoeff, 'lr': 0.01})
-            #     optimizer.add_param_group({'params': self.pipeline.vExpCoeff, 'lr': 0.01})
-            #     optimizer.add_param_group({'params': self.pipeline.vRotation, 'lr': 0.0001})
-            #     optimizer.add_param_group({'params': self.pipeline.vTranslation, 'lr': 0.0001})
+            if iter == 100:
+                optimizer.add_param_group({'params': self.pipeline.vShapeCoeff, 'lr': 0.01})
+                optimizer.add_param_group({'params': self.pipeline.vExpCoeff, 'lr': 0.01})
+                optimizer.add_param_group({'params': self.pipeline.vRotation, 'lr': 0.0001})
+                optimizer.add_param_group({'params': self.pipeline.vTranslation, 'lr': 0.0001})
 
             optimizer.zero_grad()
             vertices, diffAlbedo, specAlbedo = self.pipeline.morphableModel.computeShapeAlbedo(self.pipeline.vShapeCoeff, self.pipeline.vExpCoeff, self.pipeline.vAlbedoCoeff)
@@ -304,13 +304,15 @@ class Optimizer:
             specularTextures = self.pipeline.morphableModel.generateTextureFromAlbedo(specAlbedo)
 
             # images = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo)
-            # IMAGE IS [X, Y, 3]
+            # IMAGE IS [X, Y, 4]
             image = self.pipeline.renderMitsuba(cameraVerts, diffuseTextures, specularTextures)
+            # add batch dimension
+            image = image.unsqueeze(0)
             # todo change photoloss
-            # mask = images[..., 3:] # extract alpha channel 
-            # smoothedImage = smoothImage(images[..., 0:3], self.smoothing)
-            # diff = mask * (smoothedImage - inputTensor).abs()
-            diff = (image - inputTensor).abs()
+            mask = image[..., 3:] # extract alpha channel 
+            smoothedImage = smoothImage(image[..., 0:3], self.smoothing)
+            diff = mask * (smoothedImage - inputTensor).abs()
+            # diff = (image - inputTensor).abs()
             #photoLoss =  diff.mean(dim=-1).sum() / float(self.framesNumber)
             photoLoss = 1000.* diff.mean()
             landmarksLoss = self.config.weightLandmarksLossStep2 *  self.landmarkLoss(cameraVerts, self.landmarks)

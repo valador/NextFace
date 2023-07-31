@@ -33,7 +33,7 @@ class Pipeline:
                                              device = self.device
                                              )
         self.renderer = Renderer(config.rtTrainingSamples, 1, self.device)
-        self.rendererMitsuba = RendererMitsuba(config.rtTrainingSamples, config.bounces, self.device, self.vFocals[0])
+        self.rendererMitsuba = RendererMitsuba(config.rtTrainingSamples, config.bounces, self.device, 256, 256) # todo get screen size from somewhere
         self.uvMap = self.morphableModel.uvMap.clone()
         self.uvMap[:, 1] = 1.0 - self.uvMap[:, 1]
         self.faces32 = self.morphableModel.faces.to(torch.int32).contiguous()
@@ -203,8 +203,9 @@ class Pipeline:
         assert (diffuseTextures.shape[0] == specularTextures.shape[0] == roughnessTextures.shape[0])
 
         # TODO mitsuba should generate an alpha channel to do loss only on geometry part of picture
-        scene = self.rendererMitsuba.updateScene(cameraVerts, self.faces32, normals, self.uvMap, diffuseTextures, specularTextures, torch.clamp(roughnessTextures, 1e-20, 10.0), envMaps)
-        return self.rendererMitsuba.render(scene=scene)
+        scene = self.rendererMitsuba.updateScene(cameraVerts, self.faces32, normals, self.uvMap, diffuseTextures, specularTextures, torch.clamp(roughnessTextures, 1e-20, 10.0),self.vFocals[0], envMaps)
+        img = self.rendererMitsuba.render(scene=scene)
+        return img.unsqueeze(0) # add batch dimension
         
    
     def landmarkLoss(self, cameraVertices, landmarks, focals, cameraCenters,  debugDir = None):
