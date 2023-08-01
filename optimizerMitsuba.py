@@ -288,8 +288,9 @@ class OptimizerMitsuba:
         
         
         optimizer = torch.optim.Adam([
-            {'params': self.pipeline.vShCoeffs, 'lr': 0.005},
-            {'params': self.pipeline.vAlbedoCoeff, 'lr': 0.007}
+            # {'params': self.pipeline.vShCoeffs, 'lr': 0.005},
+            {'params': self.pipeline.vShapeCoeff, 'lr': 0.1},
+            # {'params': self.pipeline.vAlbedoCoeff, 'lr': 0.007}
         ])
         # create adam optimizer 
         # opt = mi.ad.Adam(lr=0.01)
