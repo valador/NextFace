@@ -318,10 +318,12 @@ class OptimizerMitsuba:
             # temp = opt["vShapeCoeff"]
             # self.pipeline.vShapeCoeff = torch.tensor(opt["vShapeCoeff"].data()) # might be very slow .... ?
             # self.pipeline.vShapeCoeff = opt["vShapeCoeff"].torch() # might be very slow .... ?
-            
+            opt.zero_grad()
             #convert the mi.tensorXF to a torch tensor
             vShapeCoeff_tensor = opt['vShapeCoeff']
-            dr.enable_grad(vShapeCoeff_tensor)            
+            # dr.enable_grad(vShapeCoeff_tensor)      
+            dr.eval(vShapeCoeff_tensor)      
+            dr.sync_thread()      
             vShapeCoeff_tensor = to_torch(vShapeCoeff_tensor).to(self.device)
             # vShapeCoeff_tensor = vShapeCoeff_tensor.torch()
             # vShapeCoeff_tensor = torch.from_numpy(vShapeCoeff_tensor).to(self.device).requires_grad_()
