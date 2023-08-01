@@ -205,7 +205,8 @@ class Pipeline:
         # TODO mitsuba should generate an alpha channel to do loss only on geometry part of picture
         scene = self.rendererMitsuba.updateScene(cameraVerts, self.faces32, normals, self.uvMap, diffuseTextures, specularTextures, torch.clamp(roughnessTextures, 1e-20, 10.0),self.vFocals[0], envMaps)
         img = self.rendererMitsuba.render(scene=scene)
-        return img.unsqueeze(0) # add batch dimension
+        # return img.unsqueeze(0) # add batch dimension
+        return img
         
    
     def landmarkLoss(self, cameraVertices, landmarks, focals, cameraCenters,  debugDir = None):

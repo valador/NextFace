@@ -38,7 +38,8 @@ class RendererMitsuba:
                     'type': 'hdrfilm',
                     'width':  self.screenWidth,
                     'height': self.screenHeight,
-                    'pixel_format':'rgba'
+                    'pixel_format':'rgba',
+                    'sample_border':True,
                 },
             },
             "mesh":{
@@ -112,5 +113,7 @@ class RendererMitsuba:
             self.counter += 1
             if scene is None:
                 scene = self.scene
-                
-            return RendererMitsuba.render_torch_djit(scene)
+            scene_params = mi.traverse(scene) # params that should receive gradients !!!
+            
+            # return RendererMitsuba.render_torch_djit(scene) # returns a pytorch
+            return mi.render(scene, scene_params, spp=256, seed=1, seed_grad=2) # return TensorXf
