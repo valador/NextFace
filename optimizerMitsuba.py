@@ -295,6 +295,7 @@ class OptimizerMitsuba:
         opt = mi.ad.Adam(lr=0.01)
         # init tensor
         opt["vShapeCoeff"] = mi.TensorXf(self.pipeline.vShapeCoeff) 
+        # opt["vShapeCoeff"] = mi.TensorXf(self.pipeline.vShapeCoeff) 
         # scene_params = mi.traverse(self.pipeline.rendererMitsuba.scene)
         # dr.enable_grad(scene_params['mesh.vertex_positions'])
         # dr.enable_grad(scene_params['mesh.faces'])
@@ -319,10 +320,13 @@ class OptimizerMitsuba:
             # self.pipeline.vShapeCoeff = opt["vShapeCoeff"].torch() # might be very slow .... ?
             
             #convert the mi.tensorXF to a torch tensor
-            # vShapeCoeff_tensor = np.array(opt['vShapeCoeff'])
+            vShapeCoeff_tensor = opt['vShapeCoeff']
+            dr.enable_grad(vShapeCoeff_tensor)            
+            vShapeCoeff_tensor = to_torch(vShapeCoeff_tensor).to(self.device)
+            # vShapeCoeff_tensor = vShapeCoeff_tensor.torch()
             # vShapeCoeff_tensor = torch.from_numpy(vShapeCoeff_tensor).to(self.device).requires_grad_()
             
-            vertices, diffAlbedo, specAlbedo = self.pipeline.morphableModel.computeShapeAlbedoMitsuba(opt['vShapeCoeff'], self.pipeline.vExpCoeff, self.pipeline.vAlbedoCoeff)
+            vertices, diffAlbedo, specAlbedo = self.pipeline.morphableModel.computeShapeAlbedo(vShapeCoeff_tensor, self.pipeline.vExpCoeff, self.pipeline.vAlbedoCoeff)
             cameraVerts = self.pipeline.camera.transformVertices(vertices, self.pipeline.vTranslation, self.pipeline.vRotation)
             diffuseTextures = self.pipeline.morphableModel.generateTextureFromAlbedo(diffAlbedo)
             specularTextures = self.pipeline.morphableModel.generateTextureFromAlbedo(specAlbedo)
@@ -348,7 +352,7 @@ class OptimizerMitsuba:
 
             # loss = photoLoss + landmarksLoss + regLoss
             # only use drjit array ?
-            dr.backward_from(photoLossMitsuba)
+            dr.backward(photoLossMitsuba)
             # losses.append(loss.item())
             opt.step()
             # loss.backward()

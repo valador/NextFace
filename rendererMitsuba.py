@@ -1,9 +1,9 @@
 import torch
 import math
 import mitsuba as mi
-from mitsuba.scalar_rgb import Transform4f as T
-
 import drjit as dr
+import numpy as np
+from mitsuba.scalar_rgb import Transform4f as T
 
 class RendererMitsuba:
 
@@ -15,6 +15,7 @@ class RendererMitsuba:
         self.screenWidth = screenWidth
         self.screenHeight = screenHeight
         mi.set_variant('cuda_ad_rgb')
+        dr.set_device(0)
         self.scene = self.buildInitialScene() # init my scene
         
 
@@ -117,3 +118,6 @@ class RendererMitsuba:
             
             # return RendererMitsuba.render_torch_djit(scene) # returns a pytorch
             return mi.render(scene, scene_params, spp=256, seed=1, seed_grad=2) # return TensorXf
+        
+
+    
