@@ -67,57 +67,62 @@ class RendererMitsuba:
         
         return self.scene
     
-    def updateScene(self, vertices, indices, normal, uv, diffuseTexture, specularTexture, roughnessTexture, focal, envMap):
+    
+    def render(self, vertices, indices, normal, uv, diffuseTexture, specularTexture, roughnessTexture, focal, envMap):
+        """take inputs and give it to wrapped function for rendering
+
+        Args:
+            vertices (_type_): _description_
+            indices (_type_): _description_
+            normal (_type_): _description_
+            uv (_type_): _description_
+            diffuseTexture (_type_): _description_
+            specularTexture (_type_): _description_
+            roughnessTexture (_type_): _description_
+            focal (_type_): _description_
+            envMap (_type_): _description_
+
+        Returns:
+            _type_: _description_
+        """
+        self.counter += 1
         self.fov =  torch.tensor([360.0 * torch.atan(self.screenWidth / (2.0 * focal)) / torch.pi]) # from renderer.py
         
-        params = mi.traverse(self.scene)
-        params["sensor.x_fov"] = self.fov.item()
-        # update mesh params
-        # # -> [1 N 3] -> [N 3]
-        params["mesh.vertex_positions"] = dr.ravel(mi.TensorXf(vertices.squeeze(0)))
-        # REVIEW could slow down the whole thing
-        params["mesh.faces"] = dr.ravel(mi.TensorXf(indices.to(torch.float32)))
-        params["mesh.vertex_normals"] = dr.ravel(mi.TensorXf(normal.squeeze(0)))
-        params["mesh.vertex_texcoords"] = dr.ravel(mi.TensorXf(uv))
-        # reflance data is [ X Y 3] so we convert our diffuseTexture to it 
-        # update BSDF
-        # https://mitsuba.readthedocs.io/en/stable/src/generated/plugins_bsdfs.html#smooth-diffuse-material-diffuse
-        params["mesh.bsdf.base_color.data"] = mi.TensorXf(diffuseTexture.squeeze(0))
-        # params["mesh.bsdf.specular"] = mi.TensorXf(specularTexture.squeeze(0))
-        params["mesh.bsdf.roughness.data"] = mi.TensorXf(roughnessTexture.squeeze(0))
-        
-        #update envMaps
-        params["light.data"] = mi.TensorXf(envMap.squeeze(0))
-        
-        params.update() 
-        return self.scene
+        return RendererMitsuba.render_torch_djit(self.scene, vertices.squeeze(0), indices.to(torch.float32), normal.squeeze(0), uv, diffuseTexture.squeeze(0), specularTexture, roughnessTexture.squeeze(0), self.fov.item(), envMap.squeeze(0)) # returns a pytorch
+        # return mi.render(scene, scene_params, spp=256, seed=1, seed_grad=2) # return TensorXf
+    
     # STANDALONE because of wrap_ad
     @dr.wrap_ad(source='torch', target='drjit')
-    def render_torch_djit(scene, spp=256, seed=1):
+    def render_torch_djit(scene, vertices, indices, normal, uv, diffuseTexture, specularTexture, roughnessTexture, fov, envMap, spp=256, seed=1):
         """take a texture, update the scene and render it. uses a wrap ad for backpropagation and for gradients
         we are adding a mitsuba computations in a pytorch pipeline
 
         Returns:
            image : tensorX
         """
-        scene_params = mi.traverse(scene) # params that should receive gradients !!!
-        # dr.enable_grad(scene_params["mesh.vertex_positions"])
-        # dr.enable_grad(scene_params["mesh.faces"])
-        return mi.render(scene, scene_params, spp=spp, seed=seed, seed_grad=seed+1)
+        params = mi.traverse(scene)
+        params["sensor.x_fov"] = fov
+        # update mesh params
+        # # -> [1 N 3] -> [N 3]
+        params["mesh.vertex_positions"] = dr.ravel(mi.TensorXf(vertices))
+        # REVIEW could slow down the whole thing
+        params["mesh.faces"] = dr.ravel(mi.TensorXf(indices))
+        params["mesh.vertex_normals"] = dr.ravel(mi.TensorXf(normal))
+        params["mesh.vertex_texcoords"] = dr.ravel(mi.TensorXf(uv))
+        # reflance data is [ X Y 3] so we convert our diffuseTexture to it 
+        # update BSDF
+        # https://mitsuba.readthedocs.io/en/stable/src/generated/plugins_bsdfs.html#smooth-diffuse-material-diffuse
+        params["mesh.bsdf.base_color.data"] = mi.TensorXf(diffuseTexture)
+        # params["mesh.bsdf.specular"] = mi.TensorXf(specularTexture.squeeze(0))
+        params["mesh.bsdf.roughness.data"] = mi.TensorXf(roughnessTexture)
         
-    def render(self, scene):
-            '''
-            render scenes with ray tracing
-            :param scene:  mitsuba scene
-            :return: ray traced images [n, screenWidth, screenHeight, 4]
-            '''
-            self.counter += 1
-            if scene is None:
-                scene = self.scene
-            scene_params = mi.traverse(scene) # params that should receive gradients !!!
-            
-            # return RendererMitsuba.render_torch_djit(scene) # returns a pytorch
-            return mi.render(scene, scene_params, spp=256, seed=1, seed_grad=2) # return TensorXf
+        #update envMaps
+        params["light.data"] = mi.TensorXf(envMap)
+        
+        params.update() 
+        return mi.render(scene, params, spp=spp, seed=seed, seed_grad=seed+1)
+        
+    
         
 
     
