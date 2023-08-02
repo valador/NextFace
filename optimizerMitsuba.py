@@ -156,11 +156,10 @@ class OptimizerMitsuba:
             return 0
         return i
     
-    def debugFrame(self, image, target, diffuseTexture, specularTexture, roughnessTexture, outputPrefix):
+    def debugFrame(self, image, target, diffuseTexture, specularTexture, roughnessTexture, grad_image, outputPrefix):
         for i in range(image.shape[0]):
             diff = (image[i] - target[i]).abs()
 
-            import cv2
             diffuse = cv2.resize(cv2.cvtColor(diffuseTexture[self.getTextureIndex(i)].detach().cpu().numpy(), cv2.COLOR_BGR2RGB), (target.shape[2], target.shape[1]))
             spec = cv2.resize(cv2.cvtColor(specularTexture[self.getTextureIndex(i)].detach().cpu().numpy(), cv2.COLOR_BGR2RGB),  (target.shape[2], target.shape[1]))
             rough = roughnessTexture[self.getTextureIndex(i)].detach().cpu().numpy()
@@ -169,11 +168,41 @@ class OptimizerMitsuba:
             res = cv2.hconcat([cv2.cvtColor(image[i].detach().cpu().numpy(), cv2.COLOR_BGR2RGB),
                                cv2.cvtColor(target[i].detach().cpu().numpy(), cv2.COLOR_BGR2RGB),
                                cv2.cvtColor(diff.detach().cpu().numpy(), cv2.COLOR_BGR2RGB)])
-            ref = cv2.hconcat([diffuse, spec, rough])
-
-            debugFrame = cv2.vconcat([np.power(np.clip(res, 0.0, 1.0), 1.0 / 2.2) * 255, ref * 255])
-            cv2.imwrite(outputPrefix  + '_frame' + str(i) + '.png', debugFrame)
+            tex = cv2.hconcat([diffuse, spec, rough])
+           
+            # Concatenate vertically - combined image with textures 
+            debugFrame = cv2.vconcat([np.power(np.clip(res, 0.0, 1.0), 1.0 / 2.2) * 255, tex * 255])
             
+            cv2.imwrite(outputPrefix  + '_frame' + str(i) + '.png', debugFrame)
+    def debugFrameGrad(self, image, target, grad_shapeCoeff, grad_expCoeff, grad_shCoeff, grad_rotation, grad_translation, grad_albedo, outputPrefix):
+        
+        grad_images = [grad_shapeCoeff, grad_expCoeff, grad_shCoeff, grad_rotation, grad_translation, grad_albedo]
+        for i in range(image.shape[0]):
+            diff = (image[i] - target[i]).abs()
+
+            # Prepare the gradients
+            grad_imgs = []
+            for grad in grad_images:
+                grad_img = grad[i].detach().cpu().numpy()
+                # Normalize the grad image
+                min_val, max_val = np.min(grad_img), np.max(grad_img)
+                grad_img = (grad_img - min_val) / (max_val - min_val)
+                # rest if the steps
+                grad_img_resized = cv2.resize(grad_img, (target.shape[2], target.shape[1]))
+                grad_img_rgb = cv2.cvtColor(grad_img_resized, cv2.COLOR_GRAY2RGB)
+                grad_imgs.append(grad_img_rgb)
+
+            # Concatenate horizontally
+            top_row = cv2.hconcat([cv2.cvtColor(image[i].detach().cpu().numpy(), cv2.COLOR_BGR2RGB),
+                               cv2.cvtColor(target[i].detach().cpu().numpy(), cv2.COLOR_BGR2RGB),
+                               cv2.cvtColor(diff.detach().cpu().numpy(), cv2.COLOR_BGR2RGB)])
+            middle_row = cv2.hconcat(grad_imgs[:3])
+            bottom_row = cv2.hconcat(grad_imgs[3:])
+
+            # Concatenate vertically
+            debugFrame = cv2.vconcat([np.power(np.clip(top_row, 0.0, 1.0), 1.0 / 2.2) * 255, middle_row * 255, bottom_row * 255])
+            
+            cv2.imwrite(outputPrefix  + '_frame' + str(i) + '.png', debugFrame)       
     def debugIteration(self, image, target, diff, diffuseOnlyVertexRender, lightingOnlyVertexRender, outputPrefix):
         """render a debug picture to see how an iteration looks like
 
@@ -326,8 +355,13 @@ class OptimizerMitsuba:
             loss = photoLoss + landmarksLoss + regLoss
             losses.append(loss.item())
             loss.backward()
+            grad_shapeCoeff = self.pipeline.vShapeCoeff.grad
+            grad_expCoeff = self.pipeline.vExpCoeff.grad
+            grad_shCoeff = self.pipeline.vShCoeffs.grad
+            grad_rotation = self.pipeline.vRotation.grad
+            grad_translation = self.pipeline.vTranslation.grad
+            grad_albedo = self.pipeline.vAlbedoCoeff.grad
             optimizer.step()
-            
             
             if self.verbose:
                 print(iter, '. photo Loss:', loss,
@@ -336,8 +370,8 @@ class OptimizerMitsuba:
                 print(f"Iteration {iter:03d}: Loss mitsuba = {losses[0]:6f}", end='\r')
 
             if self.config.debugFrequency > 0 and iter % self.config.debugFrequency == 0:
-                self.debugFrame(smoothedImage, inputTensor, diffuseTextures, specularTextures, roughTextures, self.debugDir + '/debug_step2/mitsuba/_' + str(iter))
-                
+                self.debugFrame(smoothedImage, inputTensor, diffuseTextures, specularTextures, roughTextures, grad_shapeCoeff, self.debugDir + '/debug_step2/mitsuba/_' + str(iter))
+                self.debugFrameGrad(smoothedImage, inputTensor, grad_shapeCoeff, grad_expCoeff, grad_shCoeff, grad_rotation, grad_translation, grad_albedo,self.debugDir + '/debug_step2/mitsuba/_gradient_' + str(iter) )
                 # lightingVertexRender = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo, lightingOnly=True)
                 # albedoVertexRender = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo, albedoOnly=True)
                 # self.debugIteration(image, inputTensor,diff, albedoVertexRender, lightingVertexRender, self.debugDir + '/debug_step2/mitsuba/_' + str(iter)) # custom made

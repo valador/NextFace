@@ -88,7 +88,9 @@ class RendererMitsuba:
         self.counter += 1
         self.fov =  torch.tensor([360.0 * torch.atan(self.screenWidth / (2.0 * focal)) / torch.pi]) # from renderer.py
         
-        return RendererMitsuba.render_torch_djit(self.scene, vertices.squeeze(0), indices.to(torch.float32), normal.squeeze(0), uv, diffuseTexture.squeeze(0), specularTexture, roughnessTexture.squeeze(0), self.fov.item(), envMap.squeeze(0)) # returns a pytorch
+        img, grad_img =  RendererMitsuba.render_torch_djit(self.scene, vertices.squeeze(0), indices.to(torch.float32), normal.squeeze(0), uv, diffuseTexture.squeeze(0), specularTexture, roughnessTexture.squeeze(0), self.fov.item(), envMap.squeeze(0)) # returns a pytorch
+            
+        return img
         # return mi.render(scene, scene_params, spp=256, seed=1, seed_grad=2) # return TensorXf
     
     # STANDALONE because of wrap_ad
@@ -120,7 +122,23 @@ class RendererMitsuba:
         params["light.data"] = mi.TensorXf(envMap)
         
         params.update() 
-        return mi.render(scene, params, spp=spp, seed=seed, seed_grad=seed+1)
+        img = mi.render(scene, params, spp=spp, seed=seed, seed_grad=seed+1)
+        grad_img = dr.grad(img)
+        # see gradients ?
+        # from matplotlib import pyplot as plt
+        # import matplotlib.cm as cm
+
+        # vlim = dr.max(dr.abs(grad_img))[0]
+        # print(f'Remapping colors within range: [{-vlim:.2f}, {vlim:.2f}]')
+
+        # fig, axx = plt.subplots(1, 3, figsize=(8, 3))
+        # for i, ax in enumerate(axx):
+        #     ax.imshow(grad_img[..., i], cmap=cm.coolwarm, vmin=-vlim, vmax=vlim)
+        #     ax.set_title('RGB'[i] + ' gradients')
+        #     ax.axis('off')
+        # fig.tight_layout()
+        # plt.show()  
+        return img, grad_img
         
     
         
