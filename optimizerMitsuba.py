@@ -356,23 +356,9 @@ class OptimizerMitsuba:
             # IMAGE IS [X, Y, 4]
             # render -> updates the scene as well as the params
             rgba_img = self.pipeline.renderMitsuba(cameraVerts, diffuseTextures, specularTextures)
-            # depth_img is of shape [batch, height, width, depth_channels]
-            # We calculate a mask where depth value in all channels <= 1.0, 
-            # if depth image has multiple channels, we want the mask to be True if the condition is met for all channels
-            # Therefore we use `.all(dim=-1)` to ensure all depth channels meet the condition
-            # mask_depth = (torch.abs(depth_img) < 1.0 ).all(dim=-1, keepdims=True) 
             mask_alpha = self.getMask(cameraVerts, diffAlbedo)
-            # mask_alpha = rgba_img[..., 3:] # extract alpha channel 
-
             smoothedImage = smoothImage(rgba_img[..., 0:3], self.smoothing)
-            # smoothedImage = rgba_img[..., 0:3]
-
-            # Apply both the masks
-            # diff = (smoothedImage - inputTensor).abs()
             diff = mask_alpha * (smoothedImage - inputTensor).abs()
-            # diff = ~mask_depth * (smoothedImage - inputTensor).abs()
-            # self.debugTensor(diff[0])
-            # self.debugTensor(mask_alpha[0])
             photoLoss = 1000.* diff.mean()
             landmarksLoss = self.config.weightLandmarksLossStep2 *  self.landmarkLoss(cameraVerts, self.landmarks)
             regLoss = 0.0001 * self.pipeline.vShCoeffs.pow(2).mean()
