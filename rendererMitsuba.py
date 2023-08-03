@@ -25,13 +25,13 @@ class RendererMitsuba:
         self.scene = mi.load_dict({
             'type': 'scene',
             'integrator': {
-                'type': 'aov',
-                'aovs': 'dd.y:depth',
-                'my_image':{
+                # 'type': 'aov',
+                # 'aovs': 'dd.y:depth',
+                # 'my_image':{
                     # 'type': 'prb'
-                    'type': 'prb_reparam' #supposed to be better for visibility discontinuities
-                    # 'type': 'direct_reparam' #supposed to be better for visibility discontinuities
-                }
+                    # 'type': 'prb_reparam' #supposed to be better for visibility discontinuities
+                    'type': 'direct_reparam' #supposed to be better for visibility discontinuities
+                # }
             },
             'sensor':  {
                 'type': 'perspective',

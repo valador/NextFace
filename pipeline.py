@@ -164,7 +164,7 @@ class Pipeline:
         images = self.computeVertexImage(cameraVerts, vertexColors, normals, debug=False, interpolation=False)
                 
         return images
-    def renderMitsuba(self, cameraVerts = None, diffuseTextures = None, specularTextures = None, roughnessTextures = None, renderAlbedo = False, depth=False):
+    def renderMitsuba(self, cameraVerts = None, diffuseTextures = None, specularTextures = None, roughnessTextures = None, renderAlbedo = False,):
         '''
         ray trace an image given camera vertices and corresponding textures
         :param cameraVerts: camera vertices tensor [n, verticesNumber, 3]
@@ -204,16 +204,16 @@ class Pipeline:
 
         # TODO mitsuba should generate an alpha channel to do loss only on geometry part of picture
         img = self.rendererMitsuba.render(cameraVerts, self.faces32, normals, self.uvMap, diffuseTextures, specularTextures, torch.clamp(roughnessTextures, 1e-20, 10.0),self.vFocals[0], envMaps)
-        img.unsqueeze(0) # add batch dimension
-        #cut link to backward
-        img = img.detach().cpu().numpy()
-        img = torch.tensor(img).to(self.device)
-        rgba_img =img[...,0:4] # first 4 channels are rgba
-        if depth:
-            depth_img = img[...,4:] # next channels are depth
-            return rgba_img, depth_img 
-        else:
-            return rgba_img
+        # #cut link to backward
+        # img = img.detach().cpu().numpy()
+        # img = torch.tensor(img).to(self.device)
+        # rgba_img =img[...,0:4].unsqueeze(0) # first 4 channels are rgba
+        # if depth:
+        #     depth_img = img[...,4:].unsqueeze(0) # next channels are depth
+        #     return rgba_img, depth_img 
+        # else:
+        #     return rgba_img
+        return img.unsqueeze(0) # add batch dimension
         
    
     def landmarkLoss(self, cameraVertices, landmarks, focals, cameraCenters,  debugDir = None):
@@ -354,19 +354,19 @@ class Pipeline:
         # Add alpha channel to the image_data
         image_data[..., 3:] = alpha_channel 
 
-        if debug:
+        # if debug:
             # normals = self.morphableModel.meshNormals.computeNormals(cameraVertices)
             # self.displayTensorColorAndNormals(vertices_in_screen_space,verticesColor,normals)
             # DEBUG COUNTER
-            print("counter")
-            debug_counter = counter[0].detach().cpu().numpy()
-            plt.imshow(debug_counter, cmap='hot', interpolation='nearest')
-            plt.show()
-            # DEBUG ALPHA CHANNEL
-            print("alpha")
-            debug_alpha = alpha_channel[0].detach().cpu().numpy()
-            plt.imshow(debug_alpha, cmap='hot', interpolation='nearest')
-            plt.show()
+            # print("counter")
+            # debug_counter = counter[0].detach().cpu().numpy()
+            # plt.imshow(debug_counter, cmap='hot', interpolation='nearest')
+            # plt.show()
+            # # DEBUG ALPHA CHANNEL
+            # print("alpha")
+            # debug_alpha = alpha_channel[0].detach().cpu().numpy()
+            # plt.imshow(debug_alpha, cmap='hot', interpolation='nearest')
+            # plt.show()
         return image_data
     
     def perspectiveProjMatrix(self, fov, aspect_ratio, near, far):
