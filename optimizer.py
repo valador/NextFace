@@ -69,7 +69,6 @@ class Optimizer:
         handle = open(outputFileName, 'wb')
         pickle.dump(dict, handle, pickle.HIGHEST_PROTOCOL)
         handle.close()
-        
 
     def loadParameters(self, pickelFileName):
         handle = open(pickelFileName, 'rb')
@@ -147,30 +146,57 @@ class Optimizer:
 
         self.pipeline.vRotation = rot.clone().detach()
         self.pipeline.vTranslation = trans.clone().detach()
-    
+        
     def getTextureIndex(self, i):
         if self.pipeline.sharedIdentity:
             return 0
         return i
     
-    def debugFrame(self, image, target, diffuseTexture, specularTexture, roughnessTexture, outputPrefix):
+    def debugFrame(self, image, target, diff, diffuseTexture, specularTexture, roughnessTexture, outputPrefix):
         for i in range(image.shape[0]):
-            diff = (image[i] - target[i]).abs()
-
-            import cv2
             diffuse = cv2.resize(cv2.cvtColor(diffuseTexture[self.getTextureIndex(i)].detach().cpu().numpy(), cv2.COLOR_BGR2RGB), (target.shape[2], target.shape[1]))
             spec = cv2.resize(cv2.cvtColor(specularTexture[self.getTextureIndex(i)].detach().cpu().numpy(), cv2.COLOR_BGR2RGB),  (target.shape[2], target.shape[1]))
             rough = roughnessTexture[self.getTextureIndex(i)].detach().cpu().numpy()
             rough = cv2.cvtColor(cv2.resize(rough, (target.shape[2], target.shape[1])), cv2.COLOR_GRAY2RGB)
 
             res = cv2.hconcat([cv2.cvtColor(image[i].detach().cpu().numpy(), cv2.COLOR_BGR2RGB),
+                                cv2.cvtColor(target[i].detach().cpu().numpy(), cv2.COLOR_BGR2RGB),
+                                cv2.cvtColor(diff[i].detach().cpu().numpy(), cv2.COLOR_BGR2RGB)])
+            tex = cv2.hconcat([diffuse, spec, rough])
+            
+            # Concatenate vertically - combined image with textures 
+            debugFrame = cv2.vconcat([np.power(np.clip(res, 0.0, 1.0), 1.0 / 2.2) * 255, tex * 255])
+            
+            cv2.imwrite(outputPrefix  + '_frame' + str(i) + '.png', debugFrame)
+    def debugFrameGrad(self, image, target, grad_shapeCoeff, grad_expCoeff, grad_shCoeff, grad_rotation, grad_translation, grad_albedo, outputPrefix):
+        
+        grad_images = [grad_shapeCoeff, grad_expCoeff, grad_shCoeff, grad_rotation, grad_translation, grad_albedo]
+        for i in range(image.shape[0]):
+            diff = (image[i] - target[i]).abs()
+
+            # Prepare the gradients
+            grad_imgs = []
+            for grad in grad_images:
+                grad_img = grad[i].detach().cpu().numpy()
+                # Normalize the grad image
+                min_val, max_val = np.min(grad_img), np.max(grad_img)
+                grad_img = (grad_img - min_val) / (max_val - min_val)
+                # rest if the steps
+                grad_img_resized = cv2.resize(grad_img, (target.shape[2], target.shape[1]))
+                grad_img_rgb = cv2.cvtColor(grad_img_resized, cv2.COLOR_GRAY2RGB)
+                grad_imgs.append(grad_img_rgb)
+
+            # Concatenate horizontally
+            top_row = cv2.hconcat([cv2.cvtColor(image[i].detach().cpu().numpy(), cv2.COLOR_BGR2RGB),
                                cv2.cvtColor(target[i].detach().cpu().numpy(), cv2.COLOR_BGR2RGB),
                                cv2.cvtColor(diff.detach().cpu().numpy(), cv2.COLOR_BGR2RGB)])
-            ref = cv2.hconcat([diffuse, spec, rough])
+            middle_row = cv2.hconcat(grad_imgs[:3])
+            bottom_row = cv2.hconcat(grad_imgs[3:])
 
-            debugFrame = cv2.vconcat([np.power(np.clip(res, 0.0, 1.0), 1.0 / 2.2) * 255, ref * 255])
-            cv2.imwrite(outputPrefix  + '_frame' + str(i) + '.png', debugFrame)
+            # Concatenate vertically
+            debugFrame = cv2.vconcat([np.power(np.clip(top_row, 0.0, 1.0), 1.0 / 2.2) * 255, middle_row * 255, bottom_row * 255])
             
+            cv2.imwrite(outputPrefix  + '_frame' + str(i) + '.png', debugFrame)       
     def debugIteration(self, image, target, diff, diffuseOnlyVertexRender, lightingOnlyVertexRender, outputPrefix):
         """render a debug picture to see how an iteration looks like
 
@@ -219,7 +245,26 @@ class Optimizer:
 
         # Save the image
         cv2.imwrite(outputPrefix + '.png', debugFrame)
+    def debugTensor(self, debugTensor):
+        """display a tensor of shape [x, y, 3]
 
+        Args:
+            debugTensor (_type_): _description_
+        """
+        import matplotlib.pyplot as plt
+
+        # Convert your tensor to a numpy array. If your tensor is on the GPU, bring it back to CPU first
+        debugTensor = debugTensor.detach().cpu().numpy()
+
+        # Convert the mask to a 2D array if it is not already
+        if len(debugTensor.shape) > 2:
+            debugTensor = debugTensor.mean(axis=-1)
+
+        # Display the mask
+        plt.imshow(debugTensor, cmap='gray')
+        plt.colorbar(label='debugTensor')
+        plt.show()
+        
     def regStatModel(self, coeff, var):
         loss = ((coeff * coeff) / var).mean()
         return loss
@@ -273,47 +318,43 @@ class Optimizer:
                             self.pipeline.morphableModel.uvMap,
                             self.debugDir + 'diffuseMap_' + str(self.getTextureIndex(0)) + '.png')
 
-        # self.plotLoss(losses, 0, self.outputDir + 'checkpoints/stage1_loss.png')
-        # self.saveParameters(self.outputDir + 'checkpoints/stage1_output.pickle')
-        
+        self.plotLoss(losses, 0, self.outputDir + 'checkpoints/stage1_loss.png')
+        self.saveParameters(self.outputDir + 'checkpoints/stage1_output.pickle')
                     
     def runStep2(self):
         print("2/3 => Optimizing shape, statistical albedos, expression, head pose and scene light...", file=sys.stderr, flush=True)
         torch.set_grad_enabled(True)
+        
         self.pipeline.renderer.samples = 8
         inputTensor = torch.pow(self.inputImage.tensor, self.inputImage.gamma)
-        
         
         optimizer = torch.optim.Adam([
             {'params': self.pipeline.vShCoeffs, 'lr': 0.005},
             {'params': self.pipeline.vAlbedoCoeff, 'lr': 0.007}
         ])
         losses = []
-
+        
         for iter in tqdm.tqdm(range(self.config.iterStep2 + 1)):
             if iter == 100:
-                optimizer.add_param_group({'params': self.pipeline.vShapeCoeff, 'lr': 0.01})
-                optimizer.add_param_group({'params': self.pipeline.vExpCoeff, 'lr': 0.01})
+                optimizer.add_param_group({'params': self.pipeline.vShapeCoeff, 'lr': 0.05}) #0.01
+                optimizer.add_param_group({'params': self.pipeline.vExpCoeff, 'lr': 0.05}) # 0.01
                 optimizer.add_param_group({'params': self.pipeline.vRotation, 'lr': 0.0001})
                 optimizer.add_param_group({'params': self.pipeline.vTranslation, 'lr': 0.0001})
-
-            optimizer.zero_grad()
+            optimizer.zero_grad() 
+           
             vertices, diffAlbedo, specAlbedo = self.pipeline.morphableModel.computeShapeAlbedo(self.pipeline.vShapeCoeff, self.pipeline.vExpCoeff, self.pipeline.vAlbedoCoeff)
             cameraVerts = self.pipeline.camera.transformVertices(vertices, self.pipeline.vTranslation, self.pipeline.vRotation)
             diffuseTextures = self.pipeline.morphableModel.generateTextureFromAlbedo(diffAlbedo)
             specularTextures = self.pipeline.morphableModel.generateTextureFromAlbedo(specAlbedo)
+            roughTextures = self.pipeline.vRoughness.detach().clone() if self.vEnhancedRoughness is None else self.vEnhancedRoughness.detach().clone()
 
-            # images = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo)
             # IMAGE IS [X, Y, 4]
-            image = self.pipeline.renderMitsuba(cameraVerts, diffuseTextures, specularTextures)
-            # add batch dimension
-            image = image.unsqueeze(0)
-            # todo change photoloss
-            mask = image[..., 3:] # extract alpha channel 
-            smoothedImage = smoothImage(image[..., 0:3], self.smoothing)
-            diff = mask * (smoothedImage - inputTensor).abs()
-            # diff = (image - inputTensor).abs()
-            #photoLoss =  diff.mean(dim=-1).sum() / float(self.framesNumber)
+            # render -> updates the scene as well as the params
+            # rgba_img = self.pipeline.renderMitsuba(cameraVerts, diffuseTextures, specularTextures) #mitsuba
+            rgba_img = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo) # vertex based
+            mask_alpha = self.getMask(cameraVerts, diffAlbedo)
+            smoothedImage = smoothImage(rgba_img[..., 0:3], self.smoothing)
+            diff = mask_alpha * (smoothedImage - inputTensor).abs()
             photoLoss = 1000.* diff.mean()
             landmarksLoss = self.config.weightLandmarksLossStep2 *  self.landmarkLoss(cameraVerts, self.landmarks)
             regLoss = 0.0001 * self.pipeline.vShCoeffs.pow(2).mean()
@@ -322,22 +363,28 @@ class Optimizer:
             regLoss += self.config.weightExpressionReg * self.regStatModel(self.pipeline.vExpCoeff, self.pipeline.morphableModel.expressionPcaVar)
 
             loss = photoLoss + landmarksLoss + regLoss
-
             losses.append(loss.item())
             loss.backward()
+            grad_shapeCoeff = self.pipeline.vShapeCoeff.grad
+            grad_expCoeff = self.pipeline.vExpCoeff.grad
+            grad_shCoeff = self.pipeline.vShCoeffs.grad
+            grad_rotation = self.pipeline.vRotation.grad
+            grad_translation = self.pipeline.vTranslation.grad
+            grad_albedo = self.pipeline.vAlbedoCoeff.grad
             optimizer.step()
+            
             if self.verbose:
-                print(iter, ' => Loss:', loss.item(),
-                      '. photo Loss:', photoLoss.item(),
+                print(iter, '. photo Loss:', loss,
                       '. landmarks Loss: ', landmarksLoss.item(),
                       '. regLoss: ', regLoss.item())
+                print(f"Iteration {iter:03d}: Loss mitsuba = {losses[0]:6f}", end='\r')
 
             if self.config.debugFrequency > 0 and iter % self.config.debugFrequency == 0:
-                # self.debugFrame(smoothedImage, inputTensor, vDiffTextures, vSpecTextures, vRoughTextures, self.debugDir + 'step2_iter' + str(iter))
-                
-                lightingVertexRender = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo, lightingOnly=True)
-                albedoVertexRender = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo, albedoOnly=True)
-                self.debugIteration(image, inputTensor,diff, albedoVertexRender, lightingVertexRender, self.debugDir + '/debug_step2/mitsuba/_' + str(iter)) # custom made
+                self.debugFrame(smoothedImage, inputTensor, diff, diffuseTextures, specularTextures, roughTextures, self.debugDir + '/Baseline/_' + str(iter))
+                # self.debugFrameGrad(smoothedImage, inputTensor, grad_shapeCoeff, grad_expCoeff, grad_shCoeff, grad_rotation, grad_translation, grad_albedo,self.debugDir + '/debug_step2/mitsuba/_gradient_' + str(iter) )
+                # lightingVertexRender = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo, lightingOnly=True)
+                # albedoVertexRender = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo, albedoOnly=True)
+                # self.debugIteration(image, inputTensor,diff, albedoVertexRender, lightingVertexRender, self.debugDir + '/debug_step2/mitsuba/_' + str(iter)) # custom made
                 # also save obj
                 cameraNormals = self.pipeline.morphableModel.computeNormals(cameraVerts) # only used of obj (might be too slow)
                 for i in range(inputTensor.shape[0]):
@@ -451,83 +498,20 @@ class Optimizer:
         cameraVerts = self.pipeline.camera.transformVertices(vertices, self.pipeline.vTranslation, self.pipeline.vRotation)
         cameraNormals = self.pipeline.morphableModel.computeNormals(cameraVerts)
 
-
         if vDiffTextures is None:
             vDiffTextures = self.pipeline.morphableModel.generateTextureFromAlbedo(diffAlbedo)
             vSpecTextures = self.pipeline.morphableModel.generateTextureFromAlbedo(specAlbedo)
             vRoughTextures = self.pipeline.vRoughness
-
 
         self.pipeline.renderer.samples = samples
-        images = self.pipeline.render(None, vDiffTextures, vSpecTextures, vRoughTextures)
+        images = self.pipeline.renderMitsuba(None, vDiffTextures, vSpecTextures, vRoughTextures)
+        # clamp it !
+        vSpecTextures.clamp(0,1)
+        diffuseAlbedo = self.pipeline.renderMitsuba(diffuseTextures=vDiffTextures, renderAlbedo=True)
+        specularAlbedo = self.pipeline.renderMitsuba(diffuseTextures=vSpecTextures, renderAlbedo=True)
+        roughnessAlbedo = self.pipeline.renderMitsuba(diffuseTextures=vRoughTextures.repeat(1, 1, 1, 3), renderAlbedo=True)
+        illum = self.pipeline.renderMitsuba(diffuseTextures=torch.ones_like(vDiffTextures), specularTextures=torch.zeros_like(vDiffTextures))
 
-        diffuseAlbedo = self.pipeline.render(diffuseTextures=vDiffTextures, renderAlbedo=True)
-        specularAlbedo = self.pipeline.render(diffuseTextures=vSpecTextures, renderAlbedo=True)
-        roughnessAlbedo = self.pipeline.render(diffuseTextures=vRoughTextures.repeat(1, 1, 1, 3), renderAlbedo=True)
-        illum = self.pipeline.render(diffuseTextures=torch.ones_like(vDiffTextures), specularTextures=torch.zeros_like(vDiffTextures))
-
-        for i in range(diffuseAlbedo.shape[0]):
-            saveObj(outputDir + prefix + '/mesh' + str(i) + '.obj',
-                    'material' + str(i) + '.mtl',
-                    cameraVerts[i],
-                    self.pipeline.faces32,
-                    cameraNormals[i],
-                    self.pipeline.morphableModel.uvMap,
-                    prefix + 'diffuseMap_' + str(self.getTextureIndex(i)) + '.png')
-
-            envMaps = self.pipeline.sh.toEnvMap(self.pipeline.vShCoeffs, self.config.smoothSh) #smooth
-            ext = '.png'
-            if self.config.saveExr:
-                ext = '.exr'
-            saveImage(envMaps[i], outputDir + '/envMap_' + str(i) + ext)
-
-            #saveImage(diffuseAlbedo[self.getTextureIndex(i)],  outputDir + prefix +  'diffuse_' + str(self.getTextureIndex(i)) + '.png')
-            #saveImage(specularAlbedo[self.getTextureIndex(i)], outputDir + prefix + 'specular_' + str(self.getTextureIndex(i)) + '.png')
-            #saveImage(roughnessAlbedo[self.getTextureIndex(i)], outputDir + prefix + 'roughness_' + str(self.getTextureIndex(i)) + '.png')
-            #saveImage(illum[i], outputDir + prefix + 'illumination_' + str(i) + '.png')
-            #saveImage(images[i], outputDir + prefix + 'finalReconstruction_' + str(i) + '.png')
-            overlay = overlayImage(inputTensor[i], images[i])
-            #saveImage(overlay, outputDir + '/overlay_' + str(i) + '.png')
-
-            renderAll = torch.cat([torch.cat([inputTensor[i], torch.ones_like(images[i])[..., 3:]], dim = -1),
-                           torch.cat([overlay.to(self.device), torch.ones_like(images[i])[..., 3:]], dim = -1),
-                           images[i],
-                           illum[i],
-                           diffuseAlbedo[self.getTextureIndex(i)],
-                           specularAlbedo[self.getTextureIndex(i)],
-                          roughnessAlbedo[self.getTextureIndex(i)]], dim=1)
-            saveImage(renderAll, outputDir + '/render_' + str(i) + '.png')
-
-            saveImage(vDiffTextures[self.getTextureIndex(i)], outputDir + prefix + 'diffuseMap_' + str(self.getTextureIndex(i)) + '.png')
-            saveImage(vSpecTextures[self.getTextureIndex(i)], outputDir + prefix + 'specularMap_' + str(self.getTextureIndex(i)) + '.png')
-            saveImage(vRoughTextures[self.getTextureIndex(i)].repeat(1, 1, 3), outputDir + prefix  + 'roughnessMap_' + str(self.getTextureIndex(i)) + '.png')
-
-    def saveOutputVertexBased(self, outputDir = None, prefix = ''):
-        if outputDir is None:
-            outputDir = self.outputDir
-            mkdir_p(outputDir)
-
-        print("saving to: '", outputDir, "'. hold on... ", file=sys.stderr, flush=True)
-        outputDir += '/' #use join
-
-        inputTensor = torch.pow(self.inputImage.tensor, self.inputImage.gamma)
-        vDiffTextures = self.vEnhancedDiffuse
-        vSpecTextures = self.vEnhancedSpecular
-        vRoughTextures = self.vEnhancedRoughness
-        vertices, diffAlbedo, specAlbedo = self.pipeline.morphableModel.computeShapeAlbedo(self.pipeline.vShapeCoeff, self.pipeline.vExpCoeff, self.pipeline.vAlbedoCoeff)
-        cameraVerts = self.pipeline.camera.transformVertices(vertices, self.pipeline.vTranslation, self.pipeline.vRotation)
-        cameraNormals = self.pipeline.morphableModel.computeNormals(cameraVerts)
-
-        if vDiffTextures is None:
-            vDiffTextures = self.pipeline.morphableModel.generateTextureFromAlbedo(diffAlbedo)
-            vSpecTextures = self.pipeline.morphableModel.generateTextureFromAlbedo(specAlbedo)
-            vRoughTextures = self.pipeline.vRoughness
-
-        images = self.pipeline.renderVertexBased(None, diffAlbedo, specAlbedo)
-
-        # usually we render with pyredner and there is a difference, in our case since our vertex-based implementation has only one type of render, this will just give us the same image every times
-        diffuseAlbedo = self.pipeline.renderVertexBased(None, diffAlbedo, specAlbedo,albedoOnly=True)
-        illum = self.pipeline.renderVertexBased(None, diffAlbedo, specAlbedo,lightingOnly=True)
         for i in range(diffuseAlbedo.shape[0]):
             saveObj(outputDir + prefix + '/mesh' + str(i) + '.obj',
                     'material' + str(i) + '.mtl',
@@ -544,6 +528,8 @@ class Optimizer:
             saveImage(envMaps[i], outputDir + '/envMap_' + str(i) + ext)
 
             saveImage(diffuseAlbedo[self.getTextureIndex(i)],  outputDir + prefix +  'diffuse_' + str(self.getTextureIndex(i)) + '.png')
+            saveImage(specularAlbedo[self.getTextureIndex(i)], outputDir + prefix + 'specular_' + str(self.getTextureIndex(i)) + '.png')
+            saveImage(roughnessAlbedo[self.getTextureIndex(i)], outputDir + prefix + 'roughness_' + str(self.getTextureIndex(i)) + '.png')
             saveImage(illum[i], outputDir + prefix + 'illumination_' + str(i) + '.png')
             saveImage(images[i], outputDir + prefix + 'finalReconstruction_' + str(i) + '.png')
             overlay = overlayImage(inputTensor[i], images[i])
@@ -553,13 +539,14 @@ class Optimizer:
                            torch.cat([overlay.to(self.device), torch.ones_like(images[i])[..., 3:]], dim = -1),
                            images[i],
                            illum[i],
-                           diffuseAlbedo[self.getTextureIndex(i)]], dim=1)
+                           diffuseAlbedo[self.getTextureIndex(i)],
+                           specularAlbedo[self.getTextureIndex(i)],
+                          roughnessAlbedo[self.getTextureIndex(i)]], dim=1)
             saveImage(renderAll, outputDir + '/render_' + str(i) + '.png')
-
             saveImage(vDiffTextures[self.getTextureIndex(i)], outputDir + prefix + 'diffuseMap_' + str(self.getTextureIndex(i)) + '.png')
             saveImage(vSpecTextures[self.getTextureIndex(i)], outputDir + prefix + 'specularMap_' + str(self.getTextureIndex(i)) + '.png')
             saveImage(vRoughTextures[self.getTextureIndex(i)].repeat(1, 1, 3), outputDir + prefix  + 'roughnessMap_' + str(self.getTextureIndex(i)) + '.png')
-    
+
     def run(self, imagePathOrDir, sharedIdentity = False, checkpoint = None, doStep1 = True, doStep2 = True, doStep3 = True):
         '''
         run optimization on given path (can be a directory that contains images with same resolution or a direct path to an image)
@@ -571,7 +558,6 @@ class Optimizer:
         :param doStep3: if True do stage 3 optim ( refine albedos)
         :return:
         '''
-
 
         self.setImage(imagePathOrDir, sharedIdentity)
         assert(self.framesNumber >= 1) #could not load any image from path
@@ -585,17 +571,36 @@ class Optimizer:
         if doStep1:
             self.runStep1()
             if self.config.saveIntermediateStage:
-                self.saveOutputVertexBased(self.outputDir + '/outputStage1', prefix='stage1_')
+                self.saveOutput(self.outputDir + '/outputStage1', prefix='stage1_')
         if doStep2:
             self.runStep2()
             if self.config.saveIntermediateStage:
-                self.saveOutputVertexBased(self.outputDir + '/outputStage2', prefix='stage2_')
+                self.saveOutput(self.outputDir + '/outputStage2', prefix='stage2_')
         if doStep3:
             self.runStep3()
         end = time.time()
         print("took {:.2f} minutes to optimize".format((end - start) / 60.), file=sys.stderr, flush=True)
-        self.saveOutputVertexBased(self.outputDir)
+        self.saveOutput(self.outputDir)
     
+    def getMask(self, cameraVerts, diffuseAlbedo):
+       """generate a vertexBased Image and only take the alpha part
+       slower but cant find a mitsuba alternative that works 
+
+        Returns:
+            _type_: _description_
+       """
+       initialMask = self.pipeline.renderVertexBased(cameraVerts, diffuseAlbedo)[..., 3:]
+       # the mask is fileld with black holes from gaps between vertex
+       # Assuming mask is your mask image with random black points
+       # Convert the mask to uint8 format
+       mask = (initialMask[0].detach().cpu().numpy() * 255).astype(np.uint8)
+       # Define a kernel. The size of the kernel affects how many pixels around the black point will be considered
+       kernel = np.ones((5,5),np.uint8)
+       # Perform the closing operation
+       mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+       mask = torch.from_numpy(mask / 255.0).unsqueeze(0).unsqueeze(-1).to(self.device).to(torch.float32)
+    #    self.debugTensor(mask)
+       return mask
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()

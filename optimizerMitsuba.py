@@ -9,8 +9,7 @@ import argparse
 import pickle
 import tqdm
 import sys
-import mitsuba as mi
-import drjit as dr
+
 class OptimizerMitsuba:
 
     def __init__(self, outputDir, config):
