@@ -15,6 +15,7 @@ class RendererMitsuba:
         self.screenWidth = screenWidth
         self.screenHeight = screenHeight
         mi.set_variant('cuda_ad_rgb')
+        mi.LogLevel(1)
         dr.set_device(0)
         self.scene = self.buildInitialScene() # init my scene
         
@@ -24,9 +25,14 @@ class RendererMitsuba:
         self.scene = mi.load_dict({
             'type': 'scene',
             'integrator': {
-                # 'type': 'prb'
-                'type': 'direct_reparam' #supposed to be better for visibility discontinuities
-                },
+                'type': 'aov',
+                'aovs': 'dd.y:depth',
+                'my_image':{
+                    # 'type': 'prb'
+                    'type': 'prb_reparam' #supposed to be better for visibility discontinuities
+                    # 'type': 'direct_reparam' #supposed to be better for visibility discontinuities
+                }
+            },
             'sensor':  {
                 'type': 'perspective',
                 'fov': 5,

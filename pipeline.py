@@ -164,7 +164,7 @@ class Pipeline:
         images = self.computeVertexImage(cameraVerts, vertexColors, normals, debug=False, interpolation=False)
                 
         return images
-    def renderMitsuba(self, cameraVerts = None, diffuseTextures = None, specularTextures = None, roughnessTextures = None, renderAlbedo = False):
+    def renderMitsuba(self, cameraVerts = None, diffuseTextures = None, specularTextures = None, roughnessTextures = None, renderAlbedo = False, depth=False):
         '''
         ray trace an image given camera vertices and corresponding textures
         :param cameraVerts: camera vertices tensor [n, verticesNumber, 3]
@@ -204,7 +204,16 @@ class Pipeline:
 
         # TODO mitsuba should generate an alpha channel to do loss only on geometry part of picture
         img = self.rendererMitsuba.render(cameraVerts, self.faces32, normals, self.uvMap, diffuseTextures, specularTextures, torch.clamp(roughnessTextures, 1e-20, 10.0),self.vFocals[0], envMaps)
-        return img.unsqueeze(0) # add batch dimension
+        img.unsqueeze(0) # add batch dimension
+        #cut link to backward
+        img = img.detach().cpu().numpy()
+        img = torch.tensor(img).to(self.device)
+        rgba_img =img[...,0:4] # first 4 channels are rgba
+        if depth:
+            depth_img = img[...,4:] # next channels are depth
+            return rgba_img, depth_img 
+        else:
+            return rgba_img
         
    
     def landmarkLoss(self, cameraVertices, landmarks, focals, cameraCenters,  debugDir = None):

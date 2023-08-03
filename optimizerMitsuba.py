@@ -156,7 +156,7 @@ class OptimizerMitsuba:
             return 0
         return i
     
-    def debugFrame(self, image, target, diffuseTexture, specularTexture, roughnessTexture, grad_image, outputPrefix):
+    def debugFrame(self, image, target, diffuseTexture, specularTexture, roughnessTexture, outputPrefix):
         for i in range(image.shape[0]):
             diff = (image[i] - target[i]).abs()
 
@@ -339,12 +339,25 @@ class OptimizerMitsuba:
 
             # IMAGE IS [X, Y, 4]
             # render -> updates the scene as well as the params
-            image = self.pipeline.renderMitsuba(cameraVerts, diffuseTextures, specularTextures)
-            # todo change photoloss
-            mask = image[..., 3:] # extract alpha channel 
-            smoothedImage = smoothImage(image[..., 0:3], self.smoothing)
-            diff = mask * (smoothedImage - inputTensor).abs()
-            # photoLoss =  diff.mean(dim=-1).sum() / float(self.framesNumber)
+            rgba_img, depth_img = self.pipeline.renderMitsuba(cameraVerts, diffuseTextures, specularTextures, depth=True)
+            # depth_img is of shape [batch, height, width, depth_channels]
+            # We calculate a mask where depth value in all channels <= 1.0, 
+            # if depth image has multiple channels, we want the mask to be True if the condition is met for all channels
+            # Therefore we use `.all(dim=-1)` to ensure all depth channels meet the condition
+            mask_depth = (torch.abs(depth_img) <= 1.0 ).all(dim=-1, keepdims=True) 
+
+            mask_alpha = rgba_img[..., 3:] # extract alpha channel 
+
+            # You should expand mask_alpha and mask_depth to match the channels of smoothedImage and inputTensor
+            # Here we assume the last dimension is the channel dimension.
+            mask_alpha_expanded = mask_alpha.unsqueeze(-1).expand(-1, -1, -1, 3)
+            mask_depth_expanded = mask_depth.unsqueeze(-1).expand(-1, -1, -1, 3)
+
+            smoothedImage = smoothImage(rgba_img[..., 0:3], self.smoothing)
+
+            # Apply both the masks
+            diff = mask_alpha_expanded * mask_depth_expanded * (smoothedImage - inputTensor).abs()
+
             photoLoss = 1000.* diff.mean()
             landmarksLoss = self.config.weightLandmarksLossStep2 *  self.landmarkLoss(cameraVerts, self.landmarks)
             regLoss = 0.0001 * self.pipeline.vShCoeffs.pow(2).mean()
@@ -370,8 +383,8 @@ class OptimizerMitsuba:
                 print(f"Iteration {iter:03d}: Loss mitsuba = {losses[0]:6f}", end='\r')
 
             if self.config.debugFrequency > 0 and iter % self.config.debugFrequency == 0:
-                self.debugFrame(smoothedImage, inputTensor, diffuseTextures, specularTextures, roughTextures, grad_shapeCoeff, self.debugDir + '/debug_step2/mitsuba/_' + str(iter))
-                self.debugFrameGrad(smoothedImage, inputTensor, grad_shapeCoeff, grad_expCoeff, grad_shCoeff, grad_rotation, grad_translation, grad_albedo,self.debugDir + '/debug_step2/mitsuba/_gradient_' + str(iter) )
+                self.debugFrame(smoothedImage, inputTensor, diffuseTextures, specularTextures, roughTextures, self.debugDir + '/debug_step2/mitsuba/_' + str(iter))
+                # self.debugFrameGrad(smoothedImage, inputTensor, grad_shapeCoeff, grad_expCoeff, grad_shCoeff, grad_rotation, grad_translation, grad_albedo,self.debugDir + '/debug_step2/mitsuba/_gradient_' + str(iter) )
                 # lightingVertexRender = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo, lightingOnly=True)
                 # albedoVertexRender = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo, albedoOnly=True)
                 # self.debugIteration(image, inputTensor,diff, albedoVertexRender, lightingVertexRender, self.debugDir + '/debug_step2/mitsuba/_' + str(iter)) # custom made
