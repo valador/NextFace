@@ -325,7 +325,7 @@ class Optimizer:
         print("2/3 => Optimizing shape, statistical albedos, expression, head pose and scene light...", file=sys.stderr, flush=True)
         torch.set_grad_enabled(True)
         
-        self.pipeline.renderer.samples = 8
+        # self.pipeline.renderer.samples = 8
         inputTensor = torch.pow(self.inputImage.tensor, self.inputImage.gamma)
         
         optimizer = torch.optim.Adam([
@@ -351,7 +351,8 @@ class Optimizer:
             # IMAGE IS [X, Y, 4]
             # render -> updates the scene as well as the params
             # rgba_img = self.pipeline.renderMitsuba(cameraVerts, diffuseTextures, specularTextures) #mitsuba
-            rgba_img = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo) # vertex based
+            rgba_img = self.pipeline.render(cameraVerts, diffuseTextures, specularTextures) #redner
+            # rgba_img = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo) # vertex based
             mask_alpha = self.getMask(cameraVerts, diffAlbedo)
             smoothedImage = smoothImage(rgba_img[..., 0:3], self.smoothing)
             diff = mask_alpha * (smoothedImage - inputTensor).abs()
@@ -380,7 +381,7 @@ class Optimizer:
                 print(f"Iteration {iter:03d}: Loss mitsuba = {losses[0]:6f}", end='\r')
 
             if self.config.debugFrequency > 0 and iter % self.config.debugFrequency == 0:
-                self.debugFrame(smoothedImage, inputTensor, diff, diffuseTextures, specularTextures, roughTextures, self.debugDir + '/Baseline/_' + str(iter))
+                self.debugFrame(smoothedImage, inputTensor, diff, diffuseTextures, specularTextures, roughTextures, self.debugDir + '/Baseline/ref_picture_redner' + str(iter))
                 # self.debugFrameGrad(smoothedImage, inputTensor, grad_shapeCoeff, grad_expCoeff, grad_shCoeff, grad_rotation, grad_translation, grad_albedo,self.debugDir + '/debug_step2/mitsuba/_gradient_' + str(iter) )
                 # lightingVertexRender = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo, lightingOnly=True)
                 # albedoVertexRender = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo, albedoOnly=True)
@@ -402,7 +403,7 @@ class Optimizer:
     def runStep3(self):
         print("3/3 => finetuning albedos, shape, expression, head pose and scene light...", file=sys.stderr, flush=True)
         torch.set_grad_enabled(True)
-        self.pipeline.renderer.samples = 8
+        # self.pipeline.renderer.samples = 8
 
         inputTensor = torch.pow(self.inputImage.tensor, self.inputImage.gamma)
         vertices, diffAlbedo, specAlbedo = self.pipeline.morphableModel.computeShapeAlbedo(self.pipeline.vShapeCoeff, self.pipeline.vExpCoeff, self.pipeline.vAlbedoCoeff)

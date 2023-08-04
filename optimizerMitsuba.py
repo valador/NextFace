@@ -329,7 +329,7 @@ class OptimizerMitsuba:
         print("2/3 => Optimizing shape, statistical albedos, expression, head pose and scene light...", file=sys.stderr, flush=True)
         torch.set_grad_enabled(True)
         
-        self.pipeline.renderer.samples = 8
+        # self.pipeline.renderer.samples = 8
         inputTensor = torch.pow(self.inputImage.tensor, self.inputImage.gamma)
         
         optimizer = torch.optim.Adam([
@@ -405,7 +405,7 @@ class OptimizerMitsuba:
     def runStep3(self):
         print("3/3 => finetuning albedos, shape, expression, head pose and scene light...", file=sys.stderr, flush=True)
         torch.set_grad_enabled(True)
-        self.pipeline.renderer.samples = 8
+        # self.pipeline.renderer.samples = 8
 
         inputTensor = torch.pow(self.inputImage.tensor, self.inputImage.gamma)
         vertices, diffAlbedo, specAlbedo = self.pipeline.morphableModel.computeShapeAlbedo(self.pipeline.vShapeCoeff, self.pipeline.vExpCoeff, self.pipeline.vAlbedoCoeff)

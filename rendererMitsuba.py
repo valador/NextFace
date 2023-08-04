@@ -51,23 +51,24 @@ class RendererMitsuba:
             },
             "mesh":{
                 "type": "obj",
-                "filename": "C:/Users/AQ14980/Desktop/repos/NextFace/output/Bikerman.jpg/debug/mesh/debug2_iter1000.obj",
+                "filename": "C:/Users/dani_/Desktop/repos/NextFace/output/Bikerman.jpg/debug/mesh/debug2_iter1000.obj",
                 "face_normals": True,
                 'bsdf': {
                     'type': 'principled',
                     'base_color': {
                         'type': 'bitmap',
-                        'filename': "C:/Users/AQ14980/Desktop/repos/NextFace/output/Bikerman.jpg/specularMap_0.png"
+                        'filename': "C:/Users/dani_/Desktop/repos/NextFace/output/Bikerman.jpg/specularMap_0.png"
                     },                
                     'roughness':{
                         'type': 'bitmap',
-                        'filename': "C:/Users/AQ14980/Desktop/repos/NextFace/output/sarah.jpg/roughnessMap_0.png"
+                        'filename': "C:/Users/dani_/Desktop/repos/NextFace/output/Bikerman.jpg/roughnessMap_0.png"
+                        
                     }
                 }
             },
             'light': {
                 'type': 'envmap',
-                'filename':'C:/Users/AQ14980/Desktop/repos/NextFace/output/Bikerman.jpg/envMap_0.png'
+                'filename':'C:/Users/dani_/Desktop/repos/NextFace/output/Bikerman.jpg/envMap_0.png'
             }
         })         
         
