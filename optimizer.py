@@ -1,4 +1,5 @@
 from image import Image, ImageFolder, overlayImage, saveImage
+from torchmetrics.functional.image import image_gradients
 from gaussiansmoothing import GaussianSmoothing, smoothImage
 from projection import estimateCameraPosition
 from textureloss import TextureLoss
@@ -9,7 +10,6 @@ import argparse
 import pickle
 import tqdm
 import sys
-
 class Optimizer:
 
     def __init__(self, outputDir, config):
@@ -96,6 +96,36 @@ class Optimizer:
 
         if "vEnhancedRoughness" in dict:
             self.vEnhancedRoughness = torch.tensor(dict['vEnhancedRoughness']).to(self.device)
+
+        handle.close()
+        self.enableGrad()
+
+    def loadAlbedoParameters(self, pickelFileName):
+        """
+        for my specific use case i will load the checkpoint for stage 1 and load only the albedoCoeff from step 2 of my synthesized test
+        """
+        handle = open(pickelFileName, 'rb')
+        assert handle is not None
+        dict = pickle.load(handle)
+        # self.pipeline.vShapeCoeff = torch.tensor(dict['vShapeCoeff']).to(self.device)
+        self.pipeline.vAlbedoCoeff = torch.tensor(dict['vAlbedoCoeff']).to(self.device)
+        # self.pipeline.vExpCoeff = torch.tensor(dict['vExpCoeff']).to(self.device)
+        # self.pipeline.vRotation = torch.tensor(dict['vRotation']).to(self.device)
+        # self.pipeline.vTranslation = torch.tensor(dict['vTranslation']).to(self.device)
+        # self.pipeline.vFocals = torch.tensor(dict['vFocals']).to(self.device)
+        # self.pipeline.vShCoeffs = torch.tensor(dict['vShCoeffs']).to(self.device)
+        # self.pipeline.renderer.screenWidth = int(dict['screenWidth'])
+        # self.pipeline.renderer.screenHeight = int(dict['screenHeight'])
+        # self.pipeline.sharedIdentity = bool(dict['sharedIdentity'])
+
+        # if "vEnhancedDiffuse" in dict:
+        #     self.vEnhancedDiffuse = torch.tensor(dict['vEnhancedDiffuse']).to(self.device)
+
+        # if "vEnhancedSpecular" in dict:
+        #     self.vEnhancedSpecular = torch.tensor(dict['vEnhancedSpecular']).to(self.device)
+
+        # if "vEnhancedRoughness" in dict:
+        #     self.vEnhancedRoughness = torch.tensor(dict['vEnhancedRoughness']).to(self.device)
 
         handle.close()
         self.enableGrad()
@@ -273,7 +303,7 @@ class Optimizer:
             debugTensor = debugTensor.mean(axis=-1)
 
         # Display the mask
-        plt.imshow(debugTensor, cmap='gray')
+        plt.imshow(debugTensor, cmap='heat')
         plt.colorbar(label='debugTensor')
         plt.show()
         
@@ -367,10 +397,10 @@ class Optimizer:
             # render -> updates the scene as well as the params
             # rgba_img = self.pipeline.renderMitsuba(cameraVerts, diffuseTextures, specularTextures) #mitsuba
             # rgba_img = self.pipeline.render(cameraVerts, diffuseTextures, specularTextures) #redner
+            # for vertex_based            
             rgba_img = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo) # vertex based
             mask_alpha = self.getMask(cameraVerts, diffAlbedo)
             smoothedImage = smoothImage(rgba_img[..., 0:3], self.smoothing)
-            # diff = (smoothedImage - inputTensor).abs()
             diff = mask_alpha * (smoothedImage - inputTensor).abs()
             photoLoss = 1000.* diff.mean()
             landmarksLoss = self.config.weightLandmarksLossStep2 *  self.landmarkLoss(cameraVerts, self.landmarks)
@@ -382,12 +412,16 @@ class Optimizer:
             loss = photoLoss + landmarksLoss + regLoss
             losses.append(loss.item())
             loss.backward()
+            grad_loss = loss.grad
             grad_shapeCoeff = self.pipeline.vShapeCoeff.grad
             grad_expCoeff = self.pipeline.vExpCoeff.grad
             grad_shCoeff = self.pipeline.vShCoeffs.grad
             grad_rotation = self.pipeline.vRotation.grad
             grad_translation = self.pipeline.vTranslation.grad
             grad_albedo = self.pipeline.vAlbedoCoeff.grad
+            # image_grad = image_gradients(rgba_img)
+            # self.debugTensor(image_grad[0].squeeze(0))
+            # self.debugTensor(image_grad[1].squeeze(0))
             optimizer.step()
             
             if self.verbose:
@@ -583,7 +617,8 @@ class Optimizer:
         if checkpoint is not None and checkpoint != '':
             print('resuming optimization from checkpoint: ',checkpoint, file=sys.stderr, flush=True)
             self.loadParameters(checkpoint)
-
+            # hardcoded for now
+            self.loadAlbedoParameters("C:/Users/dani_/Desktop/repos/NextFace/output/Bikerman.jpg/master_checkpoints/stage2_output.pickle")
         import time
         start = time.time()
         if doStep1:
