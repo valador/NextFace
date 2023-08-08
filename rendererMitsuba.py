@@ -57,7 +57,7 @@ class RendererMitsuba:
                     'type': 'principled',
                     'base_color': {
                         'type': 'bitmap',
-                        'filename': "C:/Users/dani_/Desktop/repos/NextFace/output/Bikerman.jpg/specularMap_0.png"
+                        'filename': "C:/Users/dani_/Desktop/repos/NextFace/output/Bikerman.jpg/diffuseMap_0.png"
                     },                
                     'roughness':{
                         'type': 'bitmap',
@@ -121,9 +121,9 @@ class RendererMitsuba:
         # reflance data is [ X Y 3] so we convert our diffuseTexture to it 
         # update BSDF
         # https://mitsuba.readthedocs.io/en/stable/src/generated/plugins_bsdfs.html#smooth-diffuse-material-diffuse
-        params["mesh.bsdf.base_color.data"] = mi.TensorXf(diffuseTexture)
+        # params["mesh.bsdf.base_color.data"] = mi.TensorXf(diffuseTexture)
         # params["mesh.bsdf.specular"] = mi.TensorXf(specularTexture.squeeze(0))
-        params["mesh.bsdf.roughness.data"] = mi.TensorXf(roughnessTexture)
+        # params["mesh.bsdf.roughness.data"] = mi.TensorXf(roughnessTexture)
         
         #update envMaps
         params["light.data"] = mi.TensorXf(envMap)
