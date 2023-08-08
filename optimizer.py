@@ -239,6 +239,17 @@ class Optimizer:
             debugFrame = cv2.vconcat([np.power(np.clip(top_row, 0.0, 1.0), 1.0 / 2.2) * 255, middle_row * 255, bottom_row * 255])
             
             cv2.imwrite(outputPrefix  + '_frame' + str(i) + '.png', debugFrame)       
+    def debugImageGrad(self, image, target, grad_img_1,grad_img_2, outputPrefix):
+        for i in range(image.shape[0]):
+            res = cv2.hconcat([cv2.cvtColor(image[i].detach().cpu().numpy(), cv2.COLOR_BGR2RGB),
+                                cv2.cvtColor(target[i].detach().cpu().numpy(), cv2.COLOR_BGR2RGB),
+                                cv2.cvtColor(grad_img_1[i].detach().cpu().numpy(), cv2.COLOR_BGR2GRAY),
+                                cv2.cvtColor(grad_img_2[i].detach().cpu().numpy(), cv2.COLOR_BGR2GRAY)])
+            
+            # Concatenate vertically - combined image with textures 
+            debugFrame = cv2.vconcat([np.power(np.clip(res, 0.0, 1.0), 1.0 / 2.2) * 255])
+            
+            cv2.imwrite(outputPrefix  + 'gradient_frame' + str(i) + '.png', debugFrame)
     def debugIteration(self, image, target, diff, diffuseOnlyVertexRender, lightingOnlyVertexRender, outputPrefix):
         """render a debug picture to see how an iteration looks like
 
@@ -303,7 +314,7 @@ class Optimizer:
             debugTensor = debugTensor.mean(axis=-1)
 
         # Display the mask
-        plt.imshow(debugTensor, cmap='heat')
+        plt.imshow(debugTensor)
         plt.colorbar(label='debugTensor')
         plt.show()
         
@@ -395,10 +406,10 @@ class Optimizer:
 
             # IMAGE IS [X, Y, 4]
             # render -> updates the scene as well as the params
-            # rgba_img = self.pipeline.renderMitsuba(cameraVerts, diffuseTextures, specularTextures) #mitsuba
+            rgba_img = self.pipeline.renderMitsuba(cameraVerts, diffuseTextures, specularTextures) #mitsuba
             # rgba_img = self.pipeline.render(cameraVerts, diffuseTextures, specularTextures) #redner
             # for vertex_based            
-            rgba_img = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo) # vertex based
+            # rgba_img = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo) # vertex based
             mask_alpha = self.getMask(cameraVerts, diffAlbedo)
             smoothedImage = smoothImage(rgba_img[..., 0:3], self.smoothing)
             diff = mask_alpha * (smoothedImage - inputTensor).abs()
@@ -419,28 +430,27 @@ class Optimizer:
             grad_rotation = self.pipeline.vRotation.grad
             grad_translation = self.pipeline.vTranslation.grad
             grad_albedo = self.pipeline.vAlbedoCoeff.grad
-            # image_grad = image_gradients(rgba_img)
-            # self.debugTensor(image_grad[0].squeeze(0))
-            # self.debugTensor(image_grad[1].squeeze(0))
             optimizer.step()
             
             if self.verbose:
                 print(iter, '. photo Loss:', loss,
                       '. landmarks Loss: ', landmarksLoss.item(),
                       '. regLoss: ', regLoss.item())
-                print(f"Iteration {iter:03d}: Loss vertex_based = {losses[0]:6f}", end='\r')
+                print(f"Iteration {iter:03d}: Loss mitsuba = {losses[0]:6f}", end='\r')
 
             if self.config.debugFrequency > 0 and iter % self.config.debugFrequency == 0:
-                self.debugFrame(rgba_img[..., 0:3], inputTensor, diff, diffuseTextures, specularTextures, roughTextures, self.debugDir + '/Baseline/vertex_based/vertex_based_final' + str(iter))
+                self.debugFrame(rgba_img[..., 0:3], inputTensor, diff, diffuseTextures, specularTextures, roughTextures, self.debugDir + '/Baseline/mitsuba/mitsuba_final' + str(iter))
                 # self.debugRender(rgba_img[..., 0:3],self.debugDir + '/Baseline/mitsuba/redner_ref' + str(iter))
-                # self.debugFrameGrad(smoothedImage, inputTensor, grad_shapeCoeff, grad_expCoeff, grad_shCoeff, grad_rotation, grad_translation, grad_albedo,self.debugDir + '/debug_step2/mitsuba/_gradient_' + str(iter) )
+                image_grad = image_gradients(rgba_img)
+                self.debugImageGrad(rgba_img[..., 0:3], inputTensor, image_grad[0], image_grad[1], self.debugDir + '/Baseline/mitsuba/mitsuba_gradient_' + str(iter))
+                # self.debugFrameGrad(rgba_img[..., 0:3], inputTensor, grad_shapeCoeff, grad_expCoeff, grad_shCoeff, grad_rotation, grad_translation, grad_albedo,self.debugDir + '/debug_step2/mitsuba/_gradient_' + str(iter) )
                 # lightingVertexRender = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo, lightingOnly=True)
                 # albedoVertexRender = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo, albedoOnly=True)
                 # self.debugIteration(image, inputTensor,diff, albedoVertexRender, lightingVertexRender, self.debugDir + '/debug_step2/mitsuba/_' + str(iter)) # custom made
                 # also save obj
                 cameraNormals = self.pipeline.morphableModel.computeNormals(cameraVerts) # only used of obj (might be too slow)
                 for i in range(inputTensor.shape[0]):
-                    saveObj(self.debugDir + '/mesh/' + 'vertex_based_step2_iter' + str(iter)+'.obj',
+                    saveObj(self.debugDir + '/mesh/' + 'mitsuba_step2_iter' + str(iter)+'.obj',
                             'material' + str(iter) + '.mtl',
                             cameraVerts[i],
                             self.pipeline.faces32,
@@ -448,7 +458,7 @@ class Optimizer:
                             self.pipeline.morphableModel.uvMap,
                             self.debugDir + 'diffuseMap_' + str(self.getTextureIndex(i)) + '.png')
                    
-        self.plotLoss(losses, 1, self.outputDir + 'checkpoints/stage2__vertex_based_loss.png')
+        self.plotLoss(losses, 1, self.outputDir + 'checkpoints/stage2__mitsuba_loss.png')
         self.saveParameters(self.outputDir + 'checkpoints/stage2_vertexbased_output.pickle')
 
     def runStep3(self):
