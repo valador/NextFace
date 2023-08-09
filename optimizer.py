@@ -44,7 +44,7 @@ class Optimizer:
         self.vEnhancedSpecular = None
         self.vEnhancedRoughness = None
         #TODO TO REMOVE
-        temp = Image("C:/Users/dani_/Desktop/repos/NextFace/output/Bikerman.jpg/diffuseMap_0.png", self.device, 512)
+        temp = Image("./output/Bikerman.jpg/diffuseMap_0.png", self.device, 512)
         self.diffuseTexture = torch.pow(temp.tensor,temp.gamma)
 
     def saveParameters(self, outputFileName):
@@ -240,16 +240,19 @@ class Optimizer:
             
             cv2.imwrite(outputPrefix  + '_frame' + str(i) + '.png', debugFrame)       
     def debugImageGrad(self, image, target, grad_img_1,grad_img_2, outputPrefix):
+        gamma_correction_factor = 1.0 / 2.2
         for i in range(image.shape[0]):
-            res = cv2.hconcat([cv2.cvtColor(image[i].detach().cpu().numpy(), cv2.COLOR_BGR2RGB),
-                                cv2.cvtColor(target[i].detach().cpu().numpy(), cv2.COLOR_BGR2RGB),
-                                cv2.cvtColor(grad_img_1[i].detach().cpu().numpy(), cv2.COLOR_BGR2GRAY),
-                                cv2.cvtColor(grad_img_2[i].detach().cpu().numpy(), cv2.COLOR_BGR2GRAY)])
+            grad_img_2[i, :, :, 0:2] = grad_img_2[i, :, :, 2:3]  # Copy the blue channel to the red and green channels
+            # Apply gamma correction to the first three images
+            corrected_images = [image[i], target[i], grad_img_1[i]]
+            corrected_images = [np.power(np.clip(img.detach().cpu().numpy(), 0.0, 1.0), gamma_correction_factor) for img in corrected_images]
+            corrected_images.append(cv2.cvtColor(grad_img_2[i].detach().cpu().numpy(), cv2.COLOR_BGR2RGB))  # Add the fourth image without gamma correction
+            # Concatenate horizontally
+            res = cv2.hconcat([cv2.cvtColor(img, cv2.COLOR_BGR2RGB) for img in corrected_images])
+            # Concatenate vertically - combined image with textures
+            debugFrame = cv2.vconcat([res * 255])
+            cv2.imwrite(outputPrefix + 'gradient_frame' + str(i) + '.png', debugFrame)
             
-            # Concatenate vertically - combined image with textures 
-            debugFrame = cv2.vconcat([np.power(np.clip(res, 0.0, 1.0), 1.0 / 2.2) * 255])
-            
-            cv2.imwrite(outputPrefix  + 'gradient_frame' + str(i) + '.png', debugFrame)
     def debugIteration(self, image, target, diff, diffuseOnlyVertexRender, lightingOnlyVertexRender, outputPrefix):
         """render a debug picture to see how an iteration looks like
 
@@ -423,7 +426,7 @@ class Optimizer:
             loss = photoLoss + landmarksLoss + regLoss
             losses.append(loss.item())
             loss.backward()
-            grad_loss = loss.grad
+            # grad_loss = loss.grad
             grad_shapeCoeff = self.pipeline.vShapeCoeff.grad
             grad_expCoeff = self.pipeline.vExpCoeff.grad
             grad_shCoeff = self.pipeline.vShCoeffs.grad
@@ -442,8 +445,8 @@ class Optimizer:
                 self.debugFrame(rgba_img[..., 0:3], inputTensor, diff, diffuseTextures, specularTextures, roughTextures, self.debugDir + '/Baseline/mitsuba/mitsuba_final' + str(iter))
                 # self.debugRender(rgba_img[..., 0:3],self.debugDir + '/Baseline/mitsuba/redner_ref' + str(iter))
                 image_grad = image_gradients(rgba_img)
-                self.debugImageGrad(rgba_img[..., 0:3], inputTensor, image_grad[0], image_grad[1], self.debugDir + '/Baseline/mitsuba/mitsuba_gradient_' + str(iter))
-                # self.debugFrameGrad(rgba_img[..., 0:3], inputTensor, grad_shapeCoeff, grad_expCoeff, grad_shCoeff, grad_rotation, grad_translation, grad_albedo,self.debugDir + '/debug_step2/mitsuba/_gradient_' + str(iter) )
+                # self.debugImageGrad(rgba_img[..., 0:3], inputTensor, image_grad[0], image_grad[1], self.debugDir + '/Baseline/mitsuba/mitsuba_gradient_' + str(iter))
+                self.debugFrameGrad(rgba_img[..., 0:3], inputTensor, grad_shapeCoeff, grad_expCoeff, grad_shCoeff, grad_rotation, grad_translation, grad_albedo,self.debugDir + '/Baseline/mitsuba/_gradient_coeff' + str(iter) )
                 # lightingVertexRender = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo, lightingOnly=True)
                 # albedoVertexRender = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo, albedoOnly=True)
                 # self.debugIteration(image, inputTensor,diff, albedoVertexRender, lightingVertexRender, self.debugDir + '/debug_step2/mitsuba/_' + str(iter)) # custom made
@@ -628,7 +631,7 @@ class Optimizer:
             print('resuming optimization from checkpoint: ',checkpoint, file=sys.stderr, flush=True)
             self.loadParameters(checkpoint)
             # hardcoded for now
-            self.loadAlbedoParameters("C:/Users/dani_/Desktop/repos/NextFace/output/Bikerman.jpg/master_checkpoints/stage2_output.pickle")
+            self.loadAlbedoParameters("./output/Bikerman.jpg/master_checkpoints/stage2_output.pickle")
         import time
         start = time.time()
         if doStep1:

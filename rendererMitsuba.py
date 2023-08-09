@@ -29,7 +29,7 @@ class RendererMitsuba:
                 # 'aovs': 'dd.y:depth',
                 # 'my_image':{
                     # 'type': 'prb'
-                    # 'type': 'prb_reparam' #supposed to be better for visibility discontinuities
+                    # 'type': 'prb_reparam' 
                     'type': 'direct_reparam' #supposed to be better for visibility discontinuities
                 # }
             },
@@ -51,27 +51,38 @@ class RendererMitsuba:
             },
             "mesh":{
                 "type": "obj",
-                "filename": "C:/Users/dani_/Desktop/repos/NextFace/output/Bikerman.jpg/debug/mesh/debug2_iter1000.obj",
+                "filename": "./output/Bikerman.jpg/debug/mesh/debug2_iter1000.obj",
                 "face_normals": True,
                 'bsdf': {
                     'type': 'principled',
                     'base_color': {
                         'type': 'bitmap',
-                        'filename': "C:/Users/dani_/Desktop/repos/NextFace/output/Bikerman.jpg/diffuseMap_0.png"
+                        'filename': "./output/Bikerman.jpg/diffuseMap_0.png"
                     },                
                     'roughness':{
                         'type': 'bitmap',
-                        'filename': "C:/Users/dani_/Desktop/repos/NextFace/output/Bikerman.jpg/roughnessMap_0.png"
+                        'filename': "./output/Bikerman.jpg/roughnessMap_0.png"
                         
                     }
                 }
             },
             'light': {
                 'type': 'envmap',
-                'filename':'C:/Users/dani_/Desktop/repos/NextFace/output/Bikerman.jpg/envMap_0.png'
+                'filename':'./output/Bikerman.jpg/envMap_0.png'
             }
         })         
-        
+        # enable grad
+        params = mi.traverse(self.scene)
+        # Mark the green wall color parameter as differentiable
+        dr.enable_grad(params["mesh.vertex_positions"])
+        dr.enable_grad(params["mesh.faces"])
+        dr.enable_grad(params["mesh.vertex_positions"])
+        dr.enable_grad(params["mesh.vertex_normals"])
+        dr.enable_grad(params["mesh.vertex_texcoords"])
+        dr.enable_grad(params["light.data"])
+        # add more here if needed ...
+        # Propagate this change to the scene internal state
+        params.update();
         return self.scene
     
     
@@ -127,14 +138,25 @@ class RendererMitsuba:
         
         #update envMaps
         params["light.data"] = mi.TensorXf(envMap)
+        #make them differentiable again ?
+        dr.enable_grad(params["mesh.vertex_positions"])
+        dr.enable_grad(params["mesh.faces"])
+        dr.enable_grad(params["mesh.vertex_positions"])
+        dr.enable_grad(params["mesh.vertex_normals"])
+        dr.enable_grad(params["mesh.vertex_texcoords"])
+        dr.enable_grad(params["light.data"])
         
         params.update() 
         img = mi.render(scene, params, spp=spp, seed=seed, seed_grad=seed+1)
         grad_img = dr.grad(img)
-        # see gradients ?
+        # grad_img_light = dr.grad(params["light.data"])
+        # # grad_img = dr.grad(params["mesh.vertex_positions"])
+        # # see gradients ?
         # from matplotlib import pyplot as plt
         # import matplotlib.cm as cm
-
+        # plt.imshow(grad_img * 2.0)
+        # plt.axis('off');
+        
         # vlim = dr.max(dr.abs(grad_img))[0]
         # print(f'Remapping colors within range: [{-vlim:.2f}, {vlim:.2f}]')
 
@@ -145,6 +167,7 @@ class RendererMitsuba:
         #     ax.axis('off')
         # fig.tight_layout()
         # plt.show()  
+        
         return img, grad_img
         
     
