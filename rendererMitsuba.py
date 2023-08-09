@@ -51,24 +51,24 @@ class RendererMitsuba:
             },
             "mesh":{
                 "type": "obj",
-                "filename": "./output/Bikerman.jpg/debug/mesh/debug2_iter1000.obj",
+                "filename": "./output/mitsuba_default/mesh0.obj",
                 "face_normals": True,
                 'bsdf': {
                     'type': 'principled',
                     'base_color': {
                         'type': 'bitmap',
-                        'filename': "./output/Bikerman.jpg/diffuseMap_0.png"
+                        'filename': "./output/mitsuba_default/diffuseMap_0.png"
                     },                
                     'roughness':{
                         'type': 'bitmap',
-                        'filename': "./output/Bikerman.jpg/roughnessMap_0.png"
+                        'filename': "./output/mitsuba_default/roughnessMap_0.png"
                         
                     }
                 }
             },
             'light': {
                 'type': 'envmap',
-                'filename':'./output/Bikerman.jpg/envMap_0.png'
+                'filename':'./output/mitsuba_default/envMap_0.png'
             }
         })         
         # enable grad
