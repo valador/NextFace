@@ -71,8 +71,8 @@ class Renderer:
         self.clip_near = 10.0
         self.upVector = torch.tensor([0.0, -1.0, 0.0])
         self.counter = 0
-        self.screenWidth = 256
-        self.screenHeight = 256
+        self.screenWidth = 512
+        self.screenHeight = 512
 
     def setupCamera(self, focal, image_width, image_height):
 

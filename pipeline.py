@@ -33,7 +33,7 @@ class Pipeline:
                                              device = self.device
                                              )
         self.renderer = Renderer(config.rtTrainingSamples, 1, self.device)
-        self.rendererMitsuba = RendererMitsuba(config.rtTrainingSamples, config.bounces, self.device, 256, 256) # todo get screen size from somewhere
+        self.rendererMitsuba = RendererMitsuba(config.rtTrainingSamples, config.bounces, self.device, self.config.maxResolution, self.config.maxResolution) # todo get screen size from somewhere
         self.uvMap = self.morphableModel.uvMap.clone()
         self.uvMap[:, 1] = 1.0 - self.uvMap[:, 1]
         self.faces32 = self.morphableModel.faces.to(torch.int32).contiguous()
@@ -278,8 +278,8 @@ class Pipeline:
     # predict face and mask
     def computeVertexImage(self, cameraVertices, verticesColor, normals, debug=False, interpolation=False) : 
         #since we already have the cameraVertices
-        width = 256
-        height = 256
+        width = 512
+        height = 512
         fov = torch.tensor([360.0 * torch.atan(width / (2.0 * self.vFocals)) / torch.pi]) # from renderer.py
         far = 100
         near = 0.1
@@ -315,7 +315,7 @@ class Pipeline:
         counter = torch.zeros((1, height, width, 3), dtype=torch.float32, device=self.device)
         if interpolation:
             vertices_in_screen_space = vertices_in_screen_space.long()  # Convert to long for indexing
-            vertices_in_screen_space.clamp_(0, max=255)  # Clamp to valid pixel range TODO change for bigger width + height values
+            vertices_in_screen_space.clamp_(0, max=self.config.maxResolution-1)  # Clamp to valid pixel range TODO change for bigger width + height values
             y_indices, x_indices = vertices_in_screen_space[:, 1], vertices_in_screen_space[:, 0] # create two tensors for values
             # Perform scatter operation + add alpha values
             image_data[0, y_indices, x_indices, :3] += colors_in_screen_space # add colors to pixels
@@ -338,7 +338,7 @@ class Pipeline:
         else:
             # Convert vertices and colors to an image without interpolation
             vertices_in_screen_space = vertices_in_screen_space.long()  # Convert to long for indexing
-            vertices_in_screen_space.clamp_(0, max=255)  # Clamp to valid pixel range TODO change for bigger width + height values
+            vertices_in_screen_space.clamp_(0, max=self.config.maxResolution-1)  # Clamp to valid pixel range TODO change for bigger width + height values
             y_indices, x_indices = vertices_in_screen_space[:, 1], vertices_in_screen_space[:, 0] # create two tensors for values
             # Perform scatter operation + add alpha values
             counter[0, y_indices, x_indices] += 1 # count all the pixels that have a vertex on them

@@ -12,7 +12,7 @@ class Config:
 
 		#morphable model
 		self.path = 'baselMorphableModel'
-		self.textureResolution = 256 #256 or 512
+		self.textureResolution = 512 #256 or 512
 		self.trimPca = False  # if True keep only a subset of the pca basis (eigen vectors)
 
 		#spherical harmonics
