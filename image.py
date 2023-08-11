@@ -83,7 +83,7 @@ class Image:
 
 class ImageFolder:
 
-    def __init__(self, path, device, maxRes = 512):
+    def __init__(self, path, device, maxRes = 256):
         '''
         class that represent images in a given path
         :param path: the path to the image

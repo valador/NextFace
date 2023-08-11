@@ -296,8 +296,8 @@ class Optimizer:
             ref = cv2.hconcat([ref, padding])
             
         debugFrame = cv2.vconcat([res, ref])
-        # Multiplying by 255 because OpenCV uses 8-bit values.
-        debugFrame = (debugFrame * 255).astype(np.uint8)
+        # Multiplying by 255 because OpenCV uses 8-bit values + add gamma        
+        debugFrame = (debugFrame* 255).astype(np.uint8)
 
         # Save the image
         cv2.imwrite(outputPrefix + '.png', debugFrame)
@@ -383,16 +383,7 @@ class Optimizer:
         
         # self.pipeline.renderer.samples = 8
         inputTensor = torch.pow(self.inputImage.tensor, self.inputImage.gamma)
-        
-        # if self.renderer == 'vertex':
-        #     # for vertex optimise the albedo
-        #     optimizer = torch.optim.Adam([
-        #         # {'params': self.pipeline.vShapeCoeff, 'lr': 0.05},
-        #         # {'params': self.pipeline.vExpCoeff, 'lr': 0.05},
-        #         {'params': self.pipeline.vShCoeffs, 'lr': 0.005},
-        #         {'params': self.pipeline.vAlbedoCoeff, 'lr': 0.007}
-        #     ])
-        # else :
+       
         optimizer = torch.optim.Adam([
             # {'params': self.pipeline.vShapeCoeff, 'lr': 0.05},
             # {'params': self.pipeline.vExpCoeff, 'lr': 0.05},
@@ -403,20 +394,25 @@ class Optimizer:
         
         for iter in tqdm.tqdm(range(self.config.iterStep2 + 1)):
             if iter == 100:
-                optimizer.add_param_group({'params': self.pipeline.vShapeCoeff, 'lr': 0.05}) #0.01
-                optimizer.add_param_group({'params': self.pipeline.vExpCoeff, 'lr': 0.05}) # 0.01
+                optimizer.add_param_group({'params': self.pipeline.vShapeCoeff, 'lr': 0.03}) #0.01
+                optimizer.add_param_group({'params': self.pipeline.vExpCoeff, 'lr': 0.03}) # 0.01
                 optimizer.add_param_group({'params': self.pipeline.vRotation, 'lr': 0.0001})
                 optimizer.add_param_group({'params': self.pipeline.vTranslation, 'lr': 0.0001})
             optimizer.zero_grad() 
            
             vertices, diffAlbedo, specAlbedo = self.pipeline.morphableModel.computeShapeAlbedo(self.pipeline.vShapeCoeff, self.pipeline.vExpCoeff, self.pipeline.vAlbedoCoeff)
             cameraVerts = self.pipeline.camera.transformVertices(vertices, self.pipeline.vTranslation, self.pipeline.vRotation)
+            diffuseTextures = self.pipeline.morphableModel.generateTextureFromAlbedo(diffAlbedo)
             specularTextures = self.pipeline.morphableModel.generateTextureFromAlbedo(specAlbedo)
             roughTextures = self.pipeline.vRoughness.detach().clone() if self.vEnhancedRoughness is None else self.vEnhancedRoughness.detach().clone()
+            # clamp values to not have errors
+            diffuseTextures = diffuseTextures.clamp(0,1)
+            specularTextures = specularTextures.clamp(0,1)
+            roughTextures = roughTextures.clamp(0,1)
 
             # IMAGE IS [X, Y, 4]
             # render -> updates the scene as well as the params
-            diffuseTextures = self.pipeline.morphableModel.generateTextureFromAlbedo(diffAlbedo)
+            
             if self.renderer == 'vertex':
                 rgba_img = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo) # vertex based
                 # mask_alpha = self.getMask(cameraVerts, diffAlbedo) #redondant                
@@ -429,8 +425,11 @@ class Optimizer:
                 rgba_img = self.pipeline.renderMitsuba(cameraVerts, diffuseTextures, specularTextures) #mitsuba
                 mask_alpha = self.getMask(cameraVerts, diffAlbedo)
                     
-            # smoothedImage = smoothImage(rgba_img[..., 0:3], self.smoothing)
-            diff = mask_alpha * (rgba_img[..., 0:3] - inputTensor).abs()
+            if self.config.smoothing :
+                smoothedImage = smoothImage(rgba_img[..., 0:3], self.smoothing)            
+                diff = mask_alpha * (smoothedImage - inputTensor).abs()
+            else :
+                diff = mask_alpha * (rgba_img[..., 0:3] - inputTensor).abs()
             photoLoss = 1000.* diff.mean()
             landmarksLoss = self.config.weightLandmarksLossStep2 *  self.landmarkLoss(cameraVerts, self.landmarks)
             regLoss = 0.0001 * self.pipeline.vShCoeffs.pow(2).mean()
@@ -457,7 +456,7 @@ class Optimizer:
                 print(f"Iteration {iter:03d}: Loss {self.renderer} = {losses[0]:6f}", end='\r')
 
             if self.config.debugFrequency > 0 and iter % self.config.debugFrequency == 0:
-                self.debugFrame(rgba_img[..., 0:3], inputTensor, diff, diffuseTextures, specularTextures, roughTextures, self.debugDir + '/results/'+self.renderer+'_' + str(iter))
+                self.debugFrame(rgba_img[..., 0:3], inputTensor, diff, diffuseTextures, specularTextures, roughTextures, self.debugDir + '/results/'+self.renderer+'_step2_' + str(iter))
                 # generate one with mitsuba for reference
                 # image_grad = image_gradients(rgba_img)
                 # self.debugImageGrad(rgba_img[..., 0:3], inputTensor, image_grad[0], image_grad[1], self.debugDir + '/Baseline/mitsuba/mitsuba_gradient_' + str(iter))
@@ -467,7 +466,7 @@ class Optimizer:
                     self.debugRender(mitsuba_img[..., 0:3],self.debugDir + '/results/ref')
                     lightingVertexRender = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo, lightingOnly=True)
                     albedoVertexRender = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo, albedoOnly=True)
-                    self.debugIteration(rgba_img[..., 0:3], inputTensor,diff, albedoVertexRender, lightingVertexRender, self.debugDir + '/results/'+self.renderer+ str(iter)+'_detailled_') # custom made
+                    self.debugIteration(rgba_img[..., 0:3], inputTensor,diff, albedoVertexRender, lightingVertexRender, self.debugDir + '/results/'+self.renderer+ str(iter)+'_detailled_step2') # custom made
                 # also save obj
                 cameraNormals = self.pipeline.morphableModel.computeNormals(cameraVerts) # only used of obj (might be too slow)
                 for i in range(inputTensor.shape[0]):
@@ -488,6 +487,7 @@ class Optimizer:
         # self.pipeline.renderer.samples = 8
 
         inputTensor = torch.pow(self.inputImage.tensor, self.inputImage.gamma)
+
         vertices, diffAlbedo, specAlbedo = self.pipeline.morphableModel.computeShapeAlbedo(self.pipeline.vShapeCoeff, self.pipeline.vExpCoeff, self.pipeline.vAlbedoCoeff)
         vDiffTextures = self.pipeline.morphableModel.generateTextureFromAlbedo(diffAlbedo).detach().clone() if self.vEnhancedDiffuse is None else self.vEnhancedDiffuse.detach().clone()
         vSpecTextures = self.pipeline.morphableModel.generateTextureFromAlbedo(specAlbedo).detach().clone() if self.vEnhancedSpecular is None else self.vEnhancedSpecular.detach().clone()
@@ -499,7 +499,12 @@ class Optimizer:
         vDiffTextures.requires_grad = True
         vSpecTextures.requires_grad = True
         vRoughTextures.requires_grad = True
-
+         # clamp values to not have errors
+         
+        # vDiffTextures = torch.clamp(vDiffTextures,0,1)
+        # vSpecTextures = torch.clamp(vSpecTextures,0,1)
+        # vRoughTextures = torch.clamp(vRoughTextures,0,1)
+        
         optimizer = torch.optim.Adam([
             {'params': vDiffTextures, 'lr': 0.005},
             {'params': vSpecTextures, 'lr': 0.02},
@@ -516,10 +521,10 @@ class Optimizer:
 
         for iter in tqdm.tqdm(range(self.config.iterStep3 + 1)):
             optimizer.zero_grad()
+            # torch.cuda.empty_cache() # clear out the cache
             vertices, diffAlbedo, specAlbedo = self.pipeline.morphableModel.computeShapeAlbedo(self.pipeline.vShapeCoeff, self.pipeline.vExpCoeff, self.pipeline.vAlbedoCoeff)
             cameraVerts = self.pipeline.camera.transformVertices(vertices, self.pipeline.vTranslation, self.pipeline.vRotation)
 
-            diffuseTextures = self.pipeline.morphableModel.generateTextureFromAlbedo(diffAlbedo)
             if self.renderer == 'vertex':
                 rgba_img = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo) # vertex based
                 # mask_alpha = self.getMask(cameraVerts, diffAlbedo) #redondant                
@@ -529,9 +534,14 @@ class Optimizer:
                 mask_alpha = rgba_img[...,3:]
                 
             elif self.renderer == 'mitsuba':
-                rgba_img = self.pipeline.renderMitsuba(cameraVerts, vDiffTextures, vSpecTextures) #mitsuba
+                rgba_img = self.pipeline.renderMitsuba(cameraVerts, vDiffTextures, vSpecTextures, vRoughTextures) #mitsuba
                 mask_alpha = self.getMask(cameraVerts, diffAlbedo)
-            diff = mask_alpha * (rgba_img[..., 0:3] - inputTensor).abs()
+                
+            if self.config.smoothing :
+                smoothedImage = smoothImage(rgba_img[..., 0:3], self.smoothing)            
+                diff = mask_alpha * (smoothedImage - inputTensor).abs()
+            else :
+                diff = mask_alpha * (rgba_img[..., 0:3] - inputTensor).abs()
 
             #loss =  diff.mean(dim=-1).sum() / float(self.framesNumber)
             loss = 1000.0 * diff.mean()
@@ -552,20 +562,16 @@ class Optimizer:
 
             if self.config.debugFrequency > 0 and iter % self.config.debugFrequency == 0:
                 self.debugFrame(rgba_img[..., 0:3], inputTensor, diff, vDiffTextures, vSpecTextures, vRoughTextures, self.debugDir + '/results/'+self.renderer+'_step3_' + str(iter))
-                # generate one with mitsuba for reference
-                # image_grad = image_gradients(rgba_img)
-                # self.debugImageGrad(rgba_img[..., 0:3], inputTensor, image_grad[0], image_grad[1], self.debugDir + '/Baseline/mitsuba/mitsuba_gradient_' + str(iter))
-                # self.debugFrameGrad(rgba_img[..., 0:3], inputTensor, grad_shapeCoeff, grad_expCoeff, grad_shCoeff, grad_rotation, grad_translation, grad_albedo,self.debugDir + '/results/'+self.renderer+'_gradient' + str(iter) )
                 if self.renderer == 'vertex':
-                    mitsuba_img = self.pipeline.renderMitsuba(cameraVerts, vDiffTextures, vRoughTextures) #mitsuba
-                    self.debugRender(mitsuba_img[..., 0:3],self.debugDir + '/results/ref')
+                    mitsuba_img = self.pipeline.renderMitsuba(cameraVerts, vDiffTextures, vSpecTextures, vRoughTextures) #mitsuba
+                    self.debugRender(mitsuba_img[..., 0:3],self.debugDir + '/results/ref') # save a ref of the image
                     lightingVertexRender = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo, lightingOnly=True)
                     albedoVertexRender = self.pipeline.renderVertexBased(cameraVerts, diffAlbedo, specAlbedo, albedoOnly=True)
-                    self.debugIteration(rgba_img[..., 0:3], inputTensor,diff, albedoVertexRender, lightingVertexRender, self.debugDir + '/results/'+self.renderer+ str(iter)+'_detailled_') # custom made
+                    self.debugIteration(rgba_img[..., 0:3], inputTensor,diff, albedoVertexRender, lightingVertexRender, self.debugDir + '/results/'+self.renderer+ str(iter)+'_detailled_step3') # custom made
                 # also save obj
                 cameraNormals = self.pipeline.morphableModel.computeNormals(cameraVerts) # only used of obj (might be too slow)
                 for i in range(inputTensor.shape[0]):
-                    saveObj(self.debugDir + '/mesh/' + self.renderer+'_step3_iter' + str(iter)+'.obj',
+                    saveObj(self.debugDir + '/mesh/' + self.renderer+'_step3_iter_' + str(iter)+'.obj',
                             'material' + str(iter) + '.mtl',
                             cameraVerts[i],
                             self.pipeline.faces32,
@@ -665,8 +671,8 @@ class Optimizer:
             self.loadParameters(checkpoint)
             # hardcoded for now
             # Extract the directory and file name
-            checkpoint_dir, checkpoint_file = os.path.split(checkpoint)            
-            self.loadAlbedoParameters(os.path.join(checkpoint_dir, "stage2_output.pickle"))
+            # checkpoint_dir, checkpoint_file = os.path.split(checkpoint)            
+            # self.loadAlbedoParameters(os.path.join(checkpoint_dir, "stage2_output.pickle"))
         import time
         start = time.time()
         if doStep1:

@@ -72,17 +72,17 @@ class RendererMitsuba:
             }
         })         
         # enable grad
-        params = mi.traverse(self.scene)
-        # Mark the green wall color parameter as differentiable
-        dr.enable_grad(params["mesh.vertex_positions"])
-        dr.enable_grad(params["mesh.faces"])
-        dr.enable_grad(params["mesh.vertex_positions"])
-        dr.enable_grad(params["mesh.vertex_normals"])
-        dr.enable_grad(params["mesh.vertex_texcoords"])
-        dr.enable_grad(params["light.data"])
-        # add more here if needed ...
-        # Propagate this change to the scene internal state
-        params.update();
+        # params = mi.traverse(self.scene)
+        # # Mark the green wall color parameter as differentiable
+        # dr.enable_grad(params["mesh.vertex_positions"])
+        # dr.enable_grad(params["mesh.faces"])
+        # dr.enable_grad(params["mesh.vertex_positions"])
+        # dr.enable_grad(params["mesh.vertex_normals"])
+        # dr.enable_grad(params["mesh.vertex_texcoords"])
+        # dr.enable_grad(params["light.data"])
+        # # add more here if needed ...
+        # # Propagate this change to the scene internal state
+        # params.update();
         return self.scene
     
     
@@ -106,14 +106,14 @@ class RendererMitsuba:
         self.counter += 1
         self.fov =  torch.tensor([360.0 * torch.atan(self.screenWidth / (2.0 * focal)) / torch.pi]) # from renderer.py
         
-        img, grad_img =  RendererMitsuba.render_torch_djit(self.scene, vertices.squeeze(0), indices.to(torch.float32), normal.squeeze(0), uv, diffuseTexture.squeeze(0), specularTexture, roughnessTexture.squeeze(0), self.fov.item(), envMap.squeeze(0)) # returns a pytorch
+        img, grad_img =  RendererMitsuba.render_torch_djit(self.scene, vertices.squeeze(0), indices.to(torch.float32), normal.squeeze(0), uv, diffuseTexture.squeeze(0), specularTexture.squeeze(0), roughnessTexture.squeeze(0), self.fov.item(), envMap.squeeze(0)) # returns a pytorch
             
         return img
         # return mi.render(scene, scene_params, spp=256, seed=1, seed_grad=2) # return TensorXf
     
     # STANDALONE because of wrap_ad
     @dr.wrap_ad(source='torch', target='drjit')
-    def render_torch_djit(scene, vertices, indices, normal, uv, diffuseTexture, specularTexture, roughnessTexture, fov, envMap, spp=256, seed=1):
+    def render_torch_djit(scene, vertices, indices, normal, uv, diffuseTexture, specularTexture, roughnessTexture, fov, envMap, spp=512, seed=1):
         """take a texture, update the scene and render it. uses a wrap ad for backpropagation and for gradients
         we are adding a mitsuba computations in a pytorch pipeline
 
@@ -132,19 +132,19 @@ class RendererMitsuba:
         # reflance data is [ X Y 3] so we convert our diffuseTexture to it 
         # update BSDF
         # https://mitsuba.readthedocs.io/en/stable/src/generated/plugins_bsdfs.html#smooth-diffuse-material-diffuse
-        # params["mesh.bsdf.base_color.data"] = mi.TensorXf(diffuseTexture)
-        # params["mesh.bsdf.specular"] = mi.TensorXf(specularTexture.squeeze(0))
-        # params["mesh.bsdf.roughness.data"] = mi.TensorXf(roughnessTexture)
+        params["mesh.bsdf.base_color.data"] = mi.TensorXf(diffuseTexture)
+        # params["mesh.bsdf.specular.data"] = mi.TensorXf(specularTexture) # principled doesnt support specular textures
+        params["mesh.bsdf.roughness.data"] = mi.TensorXf(roughnessTexture)
         
         #update envMaps
         params["light.data"] = mi.TensorXf(envMap)
         #make them differentiable again ?
-        dr.enable_grad(params["mesh.vertex_positions"])
-        dr.enable_grad(params["mesh.faces"])
-        dr.enable_grad(params["mesh.vertex_positions"])
-        dr.enable_grad(params["mesh.vertex_normals"])
-        dr.enable_grad(params["mesh.vertex_texcoords"])
-        dr.enable_grad(params["light.data"])
+        # dr.enable_grad(params["mesh.vertex_positions"])
+        # dr.enable_grad(params["mesh.faces"])
+        # dr.enable_grad(params["mesh.vertex_positions"])
+        # dr.enable_grad(params["mesh.vertex_normals"])
+        # dr.enable_grad(params["mesh.vertex_texcoords"])
+        # dr.enable_grad(params["light.data"])
         
         params.update() 
         img = mi.render(scene, params, spp=spp, seed=seed, seed_grad=seed+1)

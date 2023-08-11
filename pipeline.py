@@ -278,8 +278,8 @@ class Pipeline:
     # predict face and mask
     def computeVertexImage(self, cameraVertices, verticesColor, normals, debug=False, interpolation=False) : 
         #since we already have the cameraVertices
-        width = 512
-        height = 512
+        width = self.config.maxResolution
+        height = self.config.maxResolution
         fov = torch.tensor([360.0 * torch.atan(width / (2.0 * self.vFocals)) / torch.pi]) # from renderer.py
         far = 100
         near = 0.1
