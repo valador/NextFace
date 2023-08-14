@@ -394,8 +394,8 @@ class Optimizer:
         
         for iter in tqdm.tqdm(range(self.config.iterStep2 + 1)):
             if iter == 100:
-                optimizer.add_param_group({'params': self.pipeline.vShapeCoeff, 'lr': 0.03}) #0.01
-                optimizer.add_param_group({'params': self.pipeline.vExpCoeff, 'lr': 0.03}) # 0.01
+                optimizer.add_param_group({'params': self.pipeline.vShapeCoeff, 'lr': 0.01}) #0.01
+                optimizer.add_param_group({'params': self.pipeline.vExpCoeff, 'lr': 0.01}) # 0.01
                 optimizer.add_param_group({'params': self.pipeline.vRotation, 'lr': 0.0001})
                 optimizer.add_param_group({'params': self.pipeline.vTranslation, 'lr': 0.0001})
             optimizer.zero_grad() 

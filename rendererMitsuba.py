@@ -147,7 +147,7 @@ class RendererMitsuba:
         # dr.enable_grad(params["light.data"])
         
         params.update() 
-        img = mi.render(scene, params, spp=spp, seed=seed, seed_grad=seed+1)
+        img = mi.render(scene, params, spp=256, seed=seed, seed_grad=seed+1)
         grad_img = dr.grad(img)
         # grad_img_light = dr.grad(params["light.data"])
         # # grad_img = dr.grad(params["mesh.vertex_positions"])
