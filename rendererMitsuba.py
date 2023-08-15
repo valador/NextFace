@@ -113,7 +113,7 @@ class RendererMitsuba:
     
     # STANDALONE because of wrap_ad
     @dr.wrap_ad(source='torch', target='drjit')
-    def render_torch_djit(scene, vertices, indices, normal, uv, diffuseTexture, specularTexture, roughnessTexture, fov, envMap, spp=512, seed=1):
+    def render_torch_djit(scene, vertices, indices, normal, uv, diffuseTexture, specularTexture, roughnessTexture, fov, envMap, spp=8, seed=1):
         """take a texture, update the scene and render it. uses a wrap ad for backpropagation and for gradients
         we are adding a mitsuba computations in a pytorch pipeline
 
@@ -147,7 +147,7 @@ class RendererMitsuba:
         # dr.enable_grad(params["light.data"])
         
         params.update() 
-        img = mi.render(scene, params, spp=256, seed=seed, seed_grad=seed+1)
+        img = mi.render(scene, params, spp=8, seed=seed, seed_grad=seed+1)
         grad_img = dr.grad(img)
         # grad_img_light = dr.grad(params["light.data"])
         # # grad_img = dr.grad(params["mesh.vertex_positions"])
