@@ -5,6 +5,7 @@ import torch
 import cv2
 import os
 from PIL import Image
+import torchvision
 
 def saveImage(image, fileName, gamma = 2.2):
     '''
@@ -15,9 +16,15 @@ def saveImage(image, fileName, gamma = 2.2):
     :return:
     '''
 
-    import pyredner
-    pyredner.imwrite(image.cpu().detach(), fileName, gamma = gamma)
-
+    # import pyredner
+    # pyredner.imwrite(image.cpu().detach(), fileName, gamma = gamma)
+    print(f"{fileName} = {image.shape}1")
+    if ".exr" in fileName:
+        print(f"IGNORE SAVING: {fileName}")
+    else:
+        image = image.permute(2, 0, 1) # Need to permute
+        torchvision.utils.save_image(image.cpu().detach(), fileName) # TODO: gamma correction
+        
 def overlayImage(background, image):
     '''
     overlay image on top of background image an image on a background image.

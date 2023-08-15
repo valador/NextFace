@@ -7,8 +7,9 @@ from camera import Camera
 from customRenderer import *
 from utils import *
 import polyscope as ps
-class Pipeline:
 
+
+class Pipeline:
     def __init__(self,  config):
         '''
         a pipeline can generate and render textured faces under different camera angles and lighting conditions
