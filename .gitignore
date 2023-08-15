@@ -4,3 +4,6 @@ output/*
 input/*
 baselMorphableModel/*
 faceNext/*
+drjit/*
+mitsuba/*
+*.pyc
