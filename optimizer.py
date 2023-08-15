@@ -686,7 +686,15 @@ class Optimizer:
         if doStep3:
             self.runStep3()
         end = time.time()
-        print("took {:.2f} minutes to optimize".format((end - start) / 60.), file=sys.stderr, flush=True)
+        message = "took {:.2f} minutes to optimize".format((end - start) / 60.)
+        print(message, file=sys.stderr, flush=True)
+
+        # Create a unique file name based on the current timestamp
+        file_name = self.outputDir + "/run_time"+ renderer + ".txt"
+
+        # Open the file and write the message
+        with open(file_name, "w") as file:
+            file.write(message)
         self.saveOutput(self.outputDir)
     
     def getMask(self, cameraVerts, diffuseAlbedo):
