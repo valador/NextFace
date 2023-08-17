@@ -9,10 +9,10 @@ from typing import Tuple
 class RednerMat(mi.BSDF):
     def __init__(self, props: mi.Properties) -> None:
         super().__init__(props)
-        
+
         self.albedo: mi.Texture = props.get("albedo", mi.Texture.D65(0.1))
-        self.roughness: mi.Texture2f = props.get("roughness", mi.Texture2f(0.1)) # TODO: Check this type
-        self.specular: mi.Texture = props.get("specular", mi.Texture.D65(0.1))
+        self.roughness: mi.Texture = props.get("roughness", mi.Texture.D65(0.1)) # TODO: Float?
+        self.specular: mi.Texture = props.get("specular", mi.Texture.D65(0.1)) # TODO: Float?
     
     def roughness_to_phong(roughness: mi.Float) -> mi.Float:
         return dr.max(2.0 / roughness - 2, 0)
@@ -30,7 +30,12 @@ class RednerMat(mi.BSDF):
         )
         result[tan_theta == 0] = 1
         return result
-        
+    
+    def warp_cosine(sample: mi.Point2f) -> mi.Vector3f:
+        phi = mi.math * 2 * sample.y
+        z = dr.sqrt(sample.x)
+        theta = dr.acos(z)
+        return mi.Vector3f(dr.sin(theta) * dr.cos(phi), dr.sin(theta) * dr.sin(phi), z)
     
     def eval(self, ctx: mi.BSDFContext, si: mi.SurfaceInteraction3f, wo: mi.Vector3f, active: bool = True) -> mi.Color3f:
         # Calcul contribution diffuse
@@ -38,7 +43,7 @@ class RednerMat(mi.BSDF):
         
         # Calcul contribution speculaire        
         m = dr.normalize(si.wi + wo)
-        roughness = dr.max(self.roughness.eval(si.uv),0.00001)
+        roughness = dr.max(self.roughness.eval_1(si, active),0.00001)
         phong_exponent = self.roughness_to_phong(roughness)
         specular_reflectance = self.specular.eval(si, active)
         
@@ -63,7 +68,7 @@ class RednerMat(mi.BSDF):
         
         # Compute specular PDF
         m = dr.normalize(si.wi + wo)
-        roughness = dr.max(self.roughness.eval(si.uv),0.00001)
+        roughness = dr.max(self.roughness.eval_1(si, active),0.00001)
         phong_exponent = self.roughness_to_phong(roughness)
         D = dr.power(m.z, phong_exponent) * (phong_exponent + 2.0) / mi.Float(2 * math.pi)
         specular_pdf = dr.select(dr.abs(m, wo) > 0,  specular_pmf * D * m.z / (4.0 * dr.abs(dr.dot(m, wo))), 0.0)
@@ -82,18 +87,36 @@ class RednerMat(mi.BSDF):
         diffuse_pmf = dr.select(weight_pmf > 0.0, diffuse_pmf / weight_pmf, 0.0)
         specular_pmf = dr.select(weight_pmf > 0.0, specular_pmf / weight_pmf, 0.0)
         
+        # Compute masks
+        diffuse_mask = active & (diffuse_pmf < sample1)
+        specular_mask = active & ~diffuse_mask
+        
         # Example to do specular and diffuse sampling
         # https://github.com/mitsuba-renderer/mitsuba3/blob/6105dfc1057a3bc204393b8e9557bcb26e08568b/src/bsdfs/pplastic.cpp#L243C9-L256C10
         # Uses a lot of masks
+        bs: mi.BSDFSample3f = dr.zeros(mi.BSDFSample3f)
+        bs.eta = 1
+        bs.sampled_type = mi.BSDFFlags.GlossyReflection # Let's do not differentiate the two for the moment
         
-        # TODO: Sample diffuse
-        # TODO: Sample specular
+        if dr.any(diffuse_mask):
+            bs.wo[diffuse_mask] = self.warp_cosine(sample2)
+        if dr.any(specular_mask):
+            roughness = dr.max(self.roughness.eval_1(si, active),0.00001)
+            phong_exponent = self.roughness_to_phong(roughness)
+            phi = 2 * math.pi * sample2.y
+            sin_phi = dr.sin(phi)
+            cos_phi = dr.sin(phi)
+            cos_theta = dr.power(sample2.x, 1 / (phong_exponent + 2))
+            sin_theta = dr.safe_sqrt(1 - cos_theta * cos_theta)
+            m = mi.Vector3f(sin_theta * cos_phi, sin_theta * sin_phi, cos_theta)
+            bs.wo[specular_mask] = mi.reflect(si.wi, m)
         
-        # Ressources: 
-        # - https://mitsuba.readthedocs.io/en/stable/src/others/custom_plugin.html (official doc for BSDF)
-        # - https://github.com/rgl-epfl/differentiable-sdf-rendering/blob/main/python/integrators/sdf_direct_reparam.py (project that use a lot of mitsuba)
+        # Compute PDF
+        bs.pdf = self.pdf(ctx, si, bs.wo, active)
+        active &= bs.pdf > 0.0
+        result = self.eval(ctx, si, bs.wo, active)
         
-        pass
+        return (bs, result / bs.pdf & active)
     
     def to_string(self):
         return ('RednerMat[\n'
