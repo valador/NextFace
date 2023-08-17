@@ -61,7 +61,7 @@ def renderPathTracing(scene,
                     sample_pixel_center=False,
                     device=device)
 
-class Renderer:
+class RendererRedner:
 
     def __init__(self, samples, bounces, device):
         set_print_timing(False) #disable redner logs

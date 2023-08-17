@@ -709,7 +709,7 @@ class Optimizer:
     #    self.debugTensor(mask)
        return mask
    
-if __name__ == "__main__":
+if __name__ == "__main__": 
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", required=False, default='./input/s1.png', help="path to a directory or image to reconstruct (images in same directory should have the same resolution")

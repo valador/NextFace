@@ -1,8 +1,6 @@
 import torch
-import math
 import mitsuba as mi
 import drjit as dr
-import numpy as np
 from mitsuba.scalar_rgb import Transform4f as T
 
 class RendererMitsuba:
@@ -21,17 +19,17 @@ class RendererMitsuba:
         
 
     def buildInitialScene(self):
+        """
+        generate a placeholder scene where we assign default values that will be updated at runtime
+        ** make sure the mitsuba_default folder is properly placed in the output folder
+        Returns:
+            scene (python dictionnary): mitsuba scene object
+        """
         # Create scene
         self.scene = mi.load_dict({
             'type': 'scene',
             'integrator': {
-                # 'type': 'aov',
-                # 'aovs': 'dd.y:depth',
-                # 'my_image':{
-                    # 'type': 'prb'
-                    # 'type': 'prb_reparam' 
-                    'type': 'direct_reparam' #supposed to be better for visibility discontinuities
-                # }
+                'type': 'direct_reparam' #supposed to be better for visibility discontinuities
             },
             'sensor':  {
                 'type': 'perspective',
@@ -70,52 +68,41 @@ class RendererMitsuba:
                 'type': 'envmap',
                 'filename':'./output/mitsuba_default/envMap_0.png'
             }
-        })         
-        # enable grad
-        # params = mi.traverse(self.scene)
-        # # Mark the green wall color parameter as differentiable
-        # dr.enable_grad(params["mesh.vertex_positions"])
-        # dr.enable_grad(params["mesh.faces"])
-        # dr.enable_grad(params["mesh.vertex_positions"])
-        # dr.enable_grad(params["mesh.vertex_normals"])
-        # dr.enable_grad(params["mesh.vertex_texcoords"])
-        # dr.enable_grad(params["light.data"])
-        # # add more here if needed ...
-        # # Propagate this change to the scene internal state
-        # params.update();
+        })
         return self.scene
     
     
     def render(self, vertices, indices, normal, uv, diffuseTexture, specularTexture, roughnessTexture, focal, envMap):
-        """take inputs and give it to wrapped function for rendering
+        """
+        middle function between pytorch and mitsuba, we take the tensor values from our pipeline and give it to our standalone wrapper
 
         Args:
-            vertices (_type_): _description_
-            indices (_type_): _description_
-            normal (_type_): _description_
-            uv (_type_): _description_
-            diffuseTexture (_type_): _description_
-            specularTexture (_type_): _description_
-            roughnessTexture (_type_): _description_
-            focal (_type_): _description_
-            envMap (_type_): _description_
+            vertices (Tensor): _description_
+            indices (Tensor): _description_
+            normal (Tensor): _description_
+            uv (Tensor): _description_
+            diffuseTexture (Tensor): _description_
+            specularTexture (Tensor): _description_
+            roughnessTexture (Tensor): _description_
+            focal (Tensor): _description_
+            envMap (Tensor): _description_
 
         Returns:
-            _type_: _description_
+            image Tensor: the render based on our inputs
         """
-        self.counter += 1
         self.fov =  torch.tensor([360.0 * torch.atan(self.screenWidth / (2.0 * focal)) / torch.pi]) # from renderer.py
         
-        img, grad_img =  RendererMitsuba.render_torch_djit(self.scene, vertices.squeeze(0), indices.to(torch.float32), normal.squeeze(0), uv, diffuseTexture.squeeze(0), specularTexture.squeeze(0), roughnessTexture.squeeze(0), self.fov.item(), envMap.squeeze(0)) # returns a pytorch
+        img =  RendererMitsuba.render_torch_djit(self.scene, vertices.squeeze(0), indices.to(torch.float32), normal.squeeze(0), uv, diffuseTexture.squeeze(0), specularTexture.squeeze(0), roughnessTexture.squeeze(0), self.fov.item(), envMap.squeeze(0)) # returns a pytorch
             
         return img
-        # return mi.render(scene, scene_params, spp=256, seed=1, seed_grad=2) # return TensorXf
     
     # STANDALONE because of wrap_ad
     @dr.wrap_ad(source='torch', target='drjit')
     def render_torch_djit(scene, vertices, indices, normal, uv, diffuseTexture, specularTexture, roughnessTexture, fov, envMap, spp=512, seed=1):
-        """take a texture, update the scene and render it. uses a wrap ad for backpropagation and for gradients
-        we are adding a mitsuba computations in a pytorch pipeline
+        """
+        Standalone function that converts torch computations in mitsuba's drjit computations.
+        This wrapper handles the propagation of the gradients directly. 
+        We also update the values of our mitsuba scene with the values passed as inputs
 
         Returns:
            image : tensorX
@@ -123,13 +110,10 @@ class RendererMitsuba:
         params = mi.traverse(scene)
         params["sensor.x_fov"] = fov
         # update mesh params
-        # # -> [1 N 3] -> [N 3]
         params["mesh.vertex_positions"] = dr.ravel(mi.TensorXf(vertices))
-        # REVIEW could slow down the whole thing
         params["mesh.faces"] = dr.ravel(mi.TensorXf(indices))
         params["mesh.vertex_normals"] = dr.ravel(mi.TensorXf(normal))
         params["mesh.vertex_texcoords"] = dr.ravel(mi.TensorXf(uv))
-        # reflance data is [ X Y 3] so we convert our diffuseTexture to it 
         # update BSDF
         # https://mitsuba.readthedocs.io/en/stable/src/generated/plugins_bsdfs.html#smooth-diffuse-material-diffuse
         params["mesh.bsdf.base_color.data"] = mi.TensorXf(diffuseTexture)
@@ -138,37 +122,10 @@ class RendererMitsuba:
         
         #update envMaps
         params["light.data"] = mi.TensorXf(envMap)
-        #make them differentiable again ?
-        # dr.enable_grad(params["mesh.vertex_positions"])
-        # dr.enable_grad(params["mesh.faces"])
-        # dr.enable_grad(params["mesh.vertex_positions"])
-        # dr.enable_grad(params["mesh.vertex_normals"])
-        # dr.enable_grad(params["mesh.vertex_texcoords"])
-        # dr.enable_grad(params["light.data"])
         
         params.update() 
-        img = mi.render(scene, params, spp=256, seed=seed, seed_grad=seed+1)
-        grad_img = dr.grad(img)
-        # grad_img_light = dr.grad(params["light.data"])
-        # # grad_img = dr.grad(params["mesh.vertex_positions"])
-        # # see gradients ?
-        # from matplotlib import pyplot as plt
-        # import matplotlib.cm as cm
-        # plt.imshow(grad_img * 2.0)
-        # plt.axis('off');
         
-        # vlim = dr.max(dr.abs(grad_img))[0]
-        # print(f'Remapping colors within range: [{-vlim:.2f}, {vlim:.2f}]')
-
-        # fig, axx = plt.subplots(1, 3, figsize=(8, 3))
-        # for i, ax in enumerate(axx):
-        #     ax.imshow(grad_img[..., i], cmap=cm.coolwarm, vmin=-vlim, vmax=vlim)
-        #     ax.set_title('RGB'[i] + ' gradients')
-        #     ax.axis('off')
-        # fig.tight_layout()
-        # plt.show()  
-        
-        return img, grad_img
+        return mi.render(scene, params, spp=spp, seed=seed, seed_grad=seed+1)
         
     
         
