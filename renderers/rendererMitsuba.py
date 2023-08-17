@@ -1,9 +1,11 @@
-import torch
-import mitsuba as mi
 import drjit as dr
+import mitsuba as mi
+import torch
+from renderers.renderer import Renderer 
 from mitsuba.scalar_rgb import Transform4f as T
 
-class RendererMitsuba:
+
+class RendererMitsuba(Renderer):
 
     def __init__(self, samples, bounces, device, screenWidth, screenHeight):
         self.samples = samples
@@ -17,7 +19,6 @@ class RendererMitsuba:
         dr.set_device(0)
         self.scene = self.buildInitialScene() # init my scene
         
-
     def buildInitialScene(self):
         """
         generate a placeholder scene where we assign default values that will be updated at runtime
@@ -71,31 +72,6 @@ class RendererMitsuba:
         })
         return self.scene
     
-    
-    def render(self, vertices, indices, normal, uv, diffuseTexture, specularTexture, roughnessTexture, focal, envMap):
-        """
-        middle function between pytorch and mitsuba, we take the tensor values from our pipeline and give it to our standalone wrapper
-
-        Args:
-            vertices (Tensor): _description_
-            indices (Tensor): _description_
-            normal (Tensor): _description_
-            uv (Tensor): _description_
-            diffuseTexture (Tensor): _description_
-            specularTexture (Tensor): _description_
-            roughnessTexture (Tensor): _description_
-            focal (Tensor): _description_
-            envMap (Tensor): _description_
-
-        Returns:
-            image Tensor: the render based on our inputs
-        """
-        self.fov =  torch.tensor([360.0 * torch.atan(self.screenWidth / (2.0 * focal)) / torch.pi]) # from renderer.py
-        
-        img =  RendererMitsuba.render_torch_djit(self.scene, vertices.squeeze(0), indices.to(torch.float32), normal.squeeze(0), uv, diffuseTexture.squeeze(0), specularTexture.squeeze(0), roughnessTexture.squeeze(0), self.fov.item(), envMap.squeeze(0)) # returns a pytorch
-            
-        return img
-    
     # STANDALONE because of wrap_ad
     @dr.wrap_ad(source='torch', target='drjit')
     def render_torch_djit(scene, vertices, indices, normal, uv, diffuseTexture, specularTexture, roughnessTexture, fov, envMap, spp=512, seed=1):
@@ -127,7 +103,31 @@ class RendererMitsuba:
         
         return mi.render(scene, params, spp=spp, seed=seed, seed_grad=seed+1)
         
+    # overloading this method
     
+    def render(self, cameraVertices, indices, normal, uv, diffAlbedo, diffuseTexture, specularTexture, roughnessTexture, shCoeffs, shBasisFunctions, focals, envMap, renderAlbedo=False, lightingOnly=False, interpolation=False):
+        """
+        middle function between pytorch and mitsuba, we take the tensor values from our pipeline and give it to our standalone wrapper
+
+        Args:
+            vertices (Tensor): _description_
+            indices (Tensor): _description_
+            normal (Tensor): _description_
+            uv (Tensor): _description_
+            diffuseTexture (Tensor): _description_
+            specularTexture (Tensor): _description_
+            roughnessTexture (Tensor): _description_
+            focal (Tensor): _description_
+            envMap (Tensor): _description_
+
+        Returns:
+            image Tensor: the render based on our inputs
+        """
+        self.fov =  torch.tensor([360.0 * torch.atan(self.screenWidth / (2.0 * focals)) / torch.pi]) # from renderer.py
+        
+        img =  RendererMitsuba.render_torch_djit(self.scene, cameraVertices.squeeze(0), indices.to(torch.float32), normal.squeeze(0), uv, diffuseTexture.squeeze(0), specularTexture.squeeze(0), roughnessTexture.squeeze(0), self.fov.item(), envMap.squeeze(0)) # returns a pytorch
+            
+        return img
         
 
     

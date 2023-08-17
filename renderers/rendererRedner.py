@@ -5,6 +5,7 @@ import redner
 import random
 
 from pyredner import set_print_timing
+from renderers.renderer import Renderer 
 
 
 def rayTrace(scene,
@@ -61,9 +62,9 @@ def renderPathTracing(scene,
                     sample_pixel_center=False,
                     device=device)
 
-class RendererRedner:
+class RendererRedner(Renderer):
 
-    def __init__(self, samples, bounces, device):
+    def __init__(self, samples, bounces, device, screenWidth, screenHeight):
         set_print_timing(False) #disable redner logs
         self.samples = samples
         self.bounces = bounces
@@ -71,8 +72,8 @@ class RendererRedner:
         self.clip_near = 10.0
         self.upVector = torch.tensor([0.0, -1.0, 0.0])
         self.counter = 0
-        self.screenWidth = 512
-        self.screenHeight = 512
+        self.screenWidth = screenWidth
+        self.screenHeight = screenHeight
 
     def setupCamera(self, focal, image_width, image_height):
 
@@ -129,7 +130,7 @@ class RendererRedner:
 
         return scenes
 
-    def renderAlbedo(self, scenes):
+    def renderImageAlbedo(self, scenes):
         '''
         render albedo of given pyredner scenes
         :param scenes:  list of pyredner scenes
@@ -142,8 +143,7 @@ class RendererRedner:
                                    num_samples = self.samples ,
                                    device = self.device)
         return images
-
-    def render(self, scenes):
+    def renderImage(self, scenes):
         '''
         render scenes with ray tracing
         :param scenes:  list of pyredner scenes
@@ -155,3 +155,26 @@ class RendererRedner:
                                    device = self.device)
         self.counter += 1
         return images
+    
+    def render(self, cameraVertices, indices, normals, uv, diffAlbedo, diffuseTextures, specularTextures, roughnessTextures, shCoeffs, shBasisFunctions, focals, envMap, renderAlbedo=False, lightingOnly=False, interpolation=False ):
+        '''
+        ray trace an image given camera vertices and corresponding textures
+        :param cameraVerts: camera vertices tensor [n, verticesNumber, 3]
+        :param diffuseTextures: diffuse textures tensor [n, texRes, texRes, 3]
+        :param specularTextures: specular textures tensor [n, texRes, texRes, 3]
+        :param roughnessTextures: roughness textures tensor [n, texRes, texRes, 1]
+        :param renderAlbedo: if True render albedo else ray trace image
+        :param vertexBased: if True we render by vertex instead of ray tracing
+        :return: ray traced images [n, resX, resY, 4]
+        '''
+
+        scenes = self.rendererRedner.buildScenes(cameraVertices, indices, normals, uv, diffuseTextures, specularTextures, torch.clamp(roughnessTextures, 1e-20, 10.0), focals, envMap)
+        if renderAlbedo:
+            images = self.rendererRedner.renderImageAlbedo(scenes)
+        else:
+            images = self.renderImage(scenes)
+                
+        return images
+    
+    
+    
