@@ -356,8 +356,7 @@ class Optimizer:
             roughTextures = roughTextures.clamp(0,1)
 
             rgba_img = self.pipeline.render() 
-            mask_alpha = rgba_img[...,3:]                
-
+            mask_alpha = rgba_img[...,3:]            
             # gaussian smooth the render 
             if self.config.smoothing :
                 smoothedImage = smoothImage(rgba_img[..., 0:3], self.smoothing)            

@@ -12,7 +12,7 @@ class Config:
 
 		#morphable model
 		self.path = 'baselMorphableModel'
-		self.textureResolution = 256 #256 or 512
+		self.textureResolution = 512 #256 or 512
 		self.trimPca = False  # if True keep only a subset of the pca basis (eigen vectors)
 
 		#spherical harmonics
@@ -25,7 +25,7 @@ class Config:
 		self.optimizeFocalLength = True #if True the initial focal length is estimated otherwise it remains constant
 
 		#image
-		self.maxResolution = 256
+		self.maxResolution = 512
 
 		#optimization
 		self.iterStep1 = 2000 # number of iterations for the coarse optim

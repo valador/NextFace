@@ -239,7 +239,7 @@ class Pipeline:
 
         shBasisFunctions = self.sh.preComputeSHBasisFunction(normals, sh_order=8)
         
-        return self.renderer.render(cameraVerts, self.faces32, normals, self.uvMap, diffAlbedo, diffuseTextures, specularTextures, torch.clamp(roughnessTextures, 1e-20, 10.0), self.vShCoeffs, shBasisFunctions, self.vFocals[0], envMap,renderAlbedo, lightingOnly, interpolation)
+        return self.renderer.render(cameraVerts, self.faces32, normals, self.uvMap, diffAlbedo, diffuseTextures, specularTextures, torch.clamp(roughnessTextures, 1e-20, 10.0), self.vShCoeffs, shBasisFunctions, self.vFocals, envMap,renderAlbedo, lightingOnly, interpolation)
     
     def landmarkLoss(self, cameraVertices, landmarks, focals, cameraCenters,  debugDir = None):
         '''

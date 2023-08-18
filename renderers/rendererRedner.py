@@ -168,9 +168,9 @@ class RendererRedner(Renderer):
         :return: ray traced images [n, resX, resY, 4]
         '''
 
-        scenes = self.rendererRedner.buildScenes(cameraVertices, indices, normals, uv, diffuseTextures, specularTextures, torch.clamp(roughnessTextures, 1e-20, 10.0), focals, envMap)
+        scenes = self.buildScenes(cameraVertices, indices, normals, uv, diffuseTextures, specularTextures, torch.clamp(roughnessTextures, 1e-20, 10.0), focals, envMap)
         if renderAlbedo:
-            images = self.rendererRedner.renderImageAlbedo(scenes)
+            images = self.renderImageAlbedo(scenes)
         else:
             images = self.renderImage(scenes)
                 

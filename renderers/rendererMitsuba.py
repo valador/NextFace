@@ -8,7 +8,7 @@ from mitsuba.scalar_rgb import Transform4f as T
 class RendererMitsuba(Renderer):
 
     def __init__(self, samples, bounces, device, screenWidth, screenHeight):
-        self.samples = samples
+        self.spp = samples
         self.bounces = bounces
         self.device = torch.device(device)
         self.counter = 0
@@ -30,7 +30,12 @@ class RendererMitsuba(Renderer):
         self.scene = mi.load_dict({
             'type': 'scene',
             'integrator': {
-                'type': 'direct_reparam' #supposed to be better for visibility discontinuities
+                # 'type': 'direct_reparam' #supposed to be better for visibility discontinuities
+                'type':'aov',
+                'aovs':'dd.y:depth',
+                'my_image':{
+                    'type':'direct_reparam'
+                }
             },
             'sensor':  {
                 'type': 'perspective',
@@ -74,7 +79,7 @@ class RendererMitsuba(Renderer):
     
     # STANDALONE because of wrap_ad
     @dr.wrap_ad(source='torch', target='drjit')
-    def render_torch_djit(scene, vertices, indices, normal, uv, diffuseTexture, specularTexture, roughnessTexture, fov, envMap, spp=512, seed=1):
+    def render_torch_djit(scene, vertices, indices, normal, uv, diffuseTexture, specularTexture, roughnessTexture, fov, envMap, spp=8, seed=1):
         """
         Standalone function that converts torch computations in mitsuba's drjit computations.
         This wrapper handles the propagation of the gradients directly. 
@@ -100,8 +105,8 @@ class RendererMitsuba(Renderer):
         params["light.data"] = mi.TensorXf(envMap)
         
         params.update() 
-        
-        return mi.render(scene, params, spp=spp, seed=seed, seed_grad=seed+1)
+        img = mi.render(scene, params, spp=spp, seed=seed, seed_grad=seed+1)
+        return img
         
     # overloading this method
     
@@ -125,9 +130,16 @@ class RendererMitsuba(Renderer):
         """
         self.fov =  torch.tensor([360.0 * torch.atan(self.screenWidth / (2.0 * focals)) / torch.pi]) # from renderer.py
         
-        img =  RendererMitsuba.render_torch_djit(self.scene, cameraVertices.squeeze(0), indices.to(torch.float32), normal.squeeze(0), uv, diffuseTexture.squeeze(0), specularTexture.squeeze(0), roughnessTexture.squeeze(0), self.fov.item(), envMap.squeeze(0)) # returns a pytorch
-            
-        return img
-        
+        img =  RendererMitsuba.render_torch_djit(self.scene, cameraVertices.squeeze(0), indices.to(torch.float32), normal.squeeze(0), uv, diffuseTexture.squeeze(0), specularTexture.squeeze(0), roughnessTexture.squeeze(0), self.fov.item(), envMap.squeeze(0),self.spp) # returns a pytorch
+        rgb_channels = img[..., :3]
+        #debug alpha
+        mask_alpha = img[..., 4:]  # only take the last channel ?
+        # Create a binary mask based on a condition (e.g., depth_mean > threshold)
+        threshold = 0.9 # Adjust the threshold as needed
+        depth_mean = torch.mean(mask_alpha, axis=-1, keepdim=True)
+        mask_alpha = (depth_mean > threshold).float()
+        # Concatenate the RGB channels with the binary mask to create the final image 
+        final_image = torch.cat((rgb_channels, mask_alpha), dim=-1).unsqueeze(0)
 
-    
+        return final_image 
+        
