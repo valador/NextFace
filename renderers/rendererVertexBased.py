@@ -3,6 +3,7 @@ from renderers.renderer import Renderer
 
 class RendererVertexBased(Renderer):
     def __init__(self, device, screenWidth = 256, screenHeight = 256):
+        self.samples = 8
         self.device = torch.device(device)
         self.near = 0.1
         self.far = 100

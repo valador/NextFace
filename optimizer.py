@@ -1,7 +1,7 @@
 from image import Image, ImageFolder, overlayImage, saveImage
-from torchmetrics.functional.image import image_gradients
 from gaussiansmoothing import GaussianSmoothing, smoothImage
 from projection import estimateCameraPosition
+
 from textureloss import TextureLoss
 from pipeline import Pipeline
 from config import Config
@@ -10,6 +10,7 @@ import argparse
 import pickle
 import tqdm
 import sys
+
 class Optimizer:
 
     def __init__(self, outputDir, config):
@@ -41,7 +42,6 @@ class Optimizer:
         mkdir_p(self.outputDir + '/checkpoints/')
         mkdir_p(self.debugDir + '/results/')
         mkdir_p(self.debugDir + '/mesh/')
-        
         self.vEnhancedDiffuse = None
         self.vEnhancedSpecular = None
         self.vEnhancedRoughness = None
@@ -98,7 +98,7 @@ class Optimizer:
 
         handle.close()
         self.enableGrad()
-    
+
     def enableGrad(self):
         self.pipeline.vShapeCoeff.requires_grad = True
         self.pipeline.vAlbedoCoeff.requires_grad = True
@@ -121,10 +121,10 @@ class Optimizer:
             self.inputImage = ImageFolder(imagePath, self.device, self.config.maxResolution)
 
         self.framesNumber = self.inputImage.tensor.shape[0]
-        
+        #self.inputImage = Image(imagePath, self.device)
         self.pipeline.renderer.screenWidth = self.inputImage.width
         self.pipeline.renderer.screenHeight = self.inputImage.height
-        
+
         print('detecting landmarks using:', self.config.lamdmarksDetectorType)
         landmarks = self.landmarksDetector.detect(self.inputImage.tensor)
         #assert (landmarks.shape[0] == 1)  # can only handle single subject in image
@@ -148,12 +148,10 @@ class Optimizer:
 
         self.pipeline.vRotation = rot.clone().detach()
         self.pipeline.vTranslation = trans.clone().detach()
-        
     def getTextureIndex(self, i):
         if self.pipeline.sharedIdentity:
             return 0
         return i
-    
     def debugFrame(self, image, target, diff, diffuseTexture, specularTexture, roughnessTexture, outputPrefix):
         """generate a debug frame to display the current render, the difference with the target and what each texture looks like
         Args:
@@ -297,7 +295,7 @@ class Optimizer:
 
         optimizer = torch.optim.Adam(params)
         losses = []
-
+        #for iter in range(2000):
         for iter in tqdm.tqdm(range(self.config.iterStep1)):
             optimizer.zero_grad()
             vertices = self.pipeline.computeShape()
@@ -320,31 +318,29 @@ class Optimizer:
                             self.pipeline.morphableModel.uvMap,
                             self.debugDir + 'diffuseMap_' + str(self.getTextureIndex(0)) + '.png')
 
-        self.plotLoss(losses, 1, self.outputDir + 'checkpoints/stage1_loss.png')
+        self.plotLoss(losses, 0, self.outputDir + 'checkpoints/stage1_loss.png')
         self.saveParameters(self.outputDir + 'checkpoints/stage1_output.pickle')
-                    
+
     def runStep2(self):
         print("2/3 => Optimizing shape, statistical albedos, expression, head pose and scene light...", file=sys.stderr, flush=True)
         torch.set_grad_enabled(True)
         
         inputTensor = torch.pow(self.inputImage.tensor, self.inputImage.gamma)
-       
+
         optimizer = torch.optim.Adam([
-            # {'params': self.pipeline.vShapeCoeff, 'lr': 0.05},
-            # {'params': self.pipeline.vExpCoeff, 'lr': 0.05},
             {'params': self.pipeline.vShCoeffs, 'lr': 0.005},
             {'params': self.pipeline.vAlbedoCoeff, 'lr': 0.007}
         ])
         losses = []
-        
+
         for iter in tqdm.tqdm(range(self.config.iterStep2 + 1)):
             if iter == 100:
                 optimizer.add_param_group({'params': self.pipeline.vShapeCoeff, 'lr': 0.01})
                 optimizer.add_param_group({'params': self.pipeline.vExpCoeff, 'lr': 0.01})
                 optimizer.add_param_group({'params': self.pipeline.vRotation, 'lr': 0.0001})
                 optimizer.add_param_group({'params': self.pipeline.vTranslation, 'lr': 0.0001})
-            optimizer.zero_grad() 
-           
+
+            optimizer.zero_grad()
             vertices, diffAlbedo, specAlbedo = self.pipeline.morphableModel.computeShapeAlbedo(self.pipeline.vShapeCoeff, self.pipeline.vExpCoeff, self.pipeline.vAlbedoCoeff)
             cameraVerts = self.pipeline.camera.transformVertices(vertices, self.pipeline.vTranslation, self.pipeline.vRotation)
             diffuseTextures = self.pipeline.morphableModel.generateTextureFromAlbedo(diffAlbedo)
@@ -374,7 +370,6 @@ class Optimizer:
             losses.append(loss.item())
             loss.backward()
             optimizer.step()
-            
             if self.verbose:
                 print(iter, '. photo Loss:', loss,
                       '. landmarks Loss: ', landmarksLoss.item(),
@@ -407,7 +402,6 @@ class Optimizer:
         torch.set_grad_enabled(True)
 
         inputTensor = torch.pow(self.inputImage.tensor, self.inputImage.gamma)
-
         vertices, diffAlbedo, specAlbedo = self.pipeline.morphableModel.computeShapeAlbedo(self.pipeline.vShapeCoeff, self.pipeline.vExpCoeff, self.pipeline.vAlbedoCoeff)
         vDiffTextures = self.pipeline.morphableModel.generateTextureFromAlbedo(diffAlbedo).detach().clone() if self.vEnhancedDiffuse is None else self.vEnhancedDiffuse.detach().clone()
         vSpecTextures = self.pipeline.morphableModel.generateTextureFromAlbedo(specAlbedo).detach().clone() if self.vEnhancedSpecular is None else self.vEnhancedSpecular.detach().clone()
@@ -419,7 +413,7 @@ class Optimizer:
         vDiffTextures.requires_grad = True
         vSpecTextures.requires_grad = True
         vRoughTextures.requires_grad = True
-        
+
         optimizer = torch.optim.Adam([
             {'params': vDiffTextures, 'lr': 0.005},
             {'params': vSpecTextures, 'lr': 0.02},
@@ -438,10 +432,9 @@ class Optimizer:
             optimizer.zero_grad()
             vertices, diffAlbedo, specAlbedo = self.pipeline.morphableModel.computeShapeAlbedo(self.pipeline.vShapeCoeff, self.pipeline.vExpCoeff, self.pipeline.vAlbedoCoeff)
             cameraVerts = self.pipeline.camera.transformVertices(vertices, self.pipeline.vTranslation, self.pipeline.vRotation)
-               
+
             rgba_img = self.pipeline.render(vDiffTextures, vSpecTextures, vRoughTextures) 
             mask_alpha = rgba_img[..., 3:]
-                
             if self.config.smoothing :
                 smoothedImage = smoothImage(rgba_img[..., 0:3], self.smoothing)            
                 diff = mask_alpha * (smoothedImage - inputTensor).abs()
@@ -482,14 +475,14 @@ class Optimizer:
                             self.pipeline.morphableModel.uvMap,
                             self.debugDir + 'diffuseMap_' + str(self.getTextureIndex(i)) + '.png')
                    
-        self.plotLoss(losses, 1, self.outputDir + 'checkpoints/stage3_loss.png')
+        self.plotLoss(losses, 2, self.outputDir + 'checkpoints/stage3_loss.png')
         self.saveParameters(self.outputDir + 'checkpoints/stage3_output.pickle')
 
         self.vEnhancedDiffuse = vDiffTextures.detach().clone()
         self.vEnhancedSpecular = vSpecTextures.detach().clone()
         self.vEnhancedRoughness = vRoughTextures.detach().clone()
 
-    def saveOutput(self, samples,  outputDir = None, prefix = ''):
+    def saveOutput(self, outputDir = None, prefix = ''):
         if outputDir is None:
             outputDir = self.outputDir
             mkdir_p(outputDir)
@@ -509,7 +502,6 @@ class Optimizer:
             vDiffTextures = self.pipeline.morphableModel.generateTextureFromAlbedo(diffAlbedo)
             vSpecTextures = self.pipeline.morphableModel.generateTextureFromAlbedo(specAlbedo)
             vRoughTextures = self.pipeline.vRoughness
-
         images = self.pipeline.render(vDiffTextures, vSpecTextures, vRoughTextures)
         # clamp it !
         vSpecTextures.clamp(0,1)
@@ -549,6 +541,7 @@ class Optimizer:
                            specularAlbedo[self.getTextureIndex(i)],
                           roughnessAlbedo[self.getTextureIndex(i)]], dim=1)
             saveImage(renderAll, outputDir + '/render_' + str(i) + '.png')
+
             saveImage(vDiffTextures[self.getTextureIndex(i)], outputDir + prefix + 'diffuseMap_' + str(self.getTextureIndex(i)) + '.png')
             saveImage(vSpecTextures[self.getTextureIndex(i)], outputDir + prefix + 'specularMap_' + str(self.getTextureIndex(i)) + '.png')
             saveImage(vRoughTextures[self.getTextureIndex(i)].repeat(1, 1, 3), outputDir + prefix  + 'roughnessMap_' + str(self.getTextureIndex(i)) + '.png')
@@ -572,6 +565,7 @@ class Optimizer:
         if checkpoint is not None and checkpoint != '':
             print('resuming optimization from checkpoint: ',checkpoint, file=sys.stderr, flush=True)
             self.loadParameters(checkpoint)
+
         import time
         start = time.time()
         if doStep1:
@@ -587,8 +581,8 @@ class Optimizer:
         end = time.time()
         print("took {:.2f} minutes to optimize".format((end - start) / 60.), file=sys.stderr, flush=True)
         self.saveOutput(self.outputDir)
-       
-if __name__ == "__main__": 
+
+if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", required=False, default='./input/s1.png', help="path to a directory or image to reconstruct (images in same directory should have the same resolution")

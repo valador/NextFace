@@ -1,7 +1,6 @@
 import torch
 import math
 import numpy as np
-import drjit as dr
 '''
 code taken and adapted from pyredner
 '''
@@ -85,7 +84,6 @@ class SphericalHarmonics:
             envMap =self.constructEnvMapFromSHCoeffs(shCoeffs[i], smooth)
             envMaps[i] = envMap
         return envMaps
-    
     def constructEnvMapFromSHCoeffs(self, shCoeffs, smooth = False):
 
         assert (isinstance(shCoeffs, torch.Tensor) and shCoeffs.dim() == 2 and shCoeffs.shape[1] == 3)
@@ -110,7 +108,7 @@ class SphericalHarmonics:
                 i += 1
         result = torch.max(result, torch.zeros(res[0], res[1], smoothed_coeffs.shape[0], device=smoothed_coeffs.device))
         return result
-    
+
     def preComputeSHBasisFunction(self, normals, sh_order):
         """we need a matrix that holds all sh basis function  for our order, it is expensive computations so we save it in this class before
 
@@ -139,12 +137,6 @@ class SphericalHarmonics:
                 Y[..., element] = Y_l_m.squeeze()
                 element += 1
         self.Y = Y
-    
-        # normalsJit = dr.cuda.TensorXf(normals.squeeze(0).transpose(0,1)) # convert to tensor TODO possible slow 
-        # print(dr.is_array_v(normalsJit))
-        # print(normalsJit.shape)
-        # print(normalsJit.Size)
-        # return dr.sh_eval(normalsJit,sh_order)
         return Y
     
     

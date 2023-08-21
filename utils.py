@@ -1,5 +1,4 @@
 import numpy as np
-import drjit as dr
 import torch
 import cv2
 import os
@@ -123,69 +122,3 @@ def writeDictionaryToPickle(dict, picklePath):
     handle = open(picklePath, 'wb')
     pickle.dump(dict, handle, pickle.HIGHEST_PROTOCOL)
     handle.close()
-    
-# CODE from 
-# https://github.com/mitsuba-renderer/mitsuba3/issues/171
-# https://github.com/mitsuba-renderer/drjit/commit/d7a6fffba1ff1ae381dda9a7ff98388214088137
-
-def to_torch(arg):
-    is_llvm = dr.is_llvm_v(arg)
-    is_cuda = dr.is_cuda_v(arg)
-
-    import torch
-    import torch.autograd
-
-    class ToTorch(torch.autograd.Function):
-        @staticmethod
-        def forward(ctx, arg, handle):
-            ctx.drjit_arg = arg
-            if is_llvm:
-                return torch.tensor(np.array(arg))
-            elif is_cuda:
-                return torch.tensor(np.array(arg)).cuda()
-            else:
-                raise TypeError("to_torch(): only cuda and llvm is supported")
-
-        @staticmethod
-        @torch.autograd.function.once_differentiable
-        def backward(ctx, grad_output):
-            dr.set_grad(ctx.drjit_arg, grad_output)
-            dr.enqueue(dr.ADMode.Backward, ctx.drjit_arg)
-            dr.traverse(type(ctx.drjit_arg), dr.ADMode.Backward)
-            del ctx.drjit_arg
-            return None, None
-
-    handle = torch.empty(0, requires_grad=True)
-    return ToTorch.apply(arg, handle)
-
-
-def from_torch(dtype, arg):
-    import torch
-    if not dr.is_diff_v(dtype) or not dr.is_array_v(dtype):
-        raise TypeError(
-            "from_torch(): expected a differentiable DrJit array type!")
-
-    class FromTorch(dr.CustomOp):
-        def eval(self, arg, handle):
-            self.torch_arg = arg
-            if dr.is_cuda_v(dtype):
-                return dtype(arg.cuda())
-            elif dr.is_llvm_v(dtype):
-                return dtype(arg.cpu())
-            else:
-                raise TypeError(
-                    "from_torch(): only cuda and llvm is supported")
-
-        def forward(self):
-            raise TypeError("from_torch(): forward-mode AD is not supported!")
-
-        def backward(self):
-            if dr.is_cuda_v(dtype):
-                grad = torch.tensor(np.array(self.grad_out())).cuda()
-            elif dr.is_llvm_v(dtype):
-                grad = torch.tensor(np.array(self.grad_out())).cuda().cpu()
-            self.torch_arg.backward(grad)
-
-    handle = dr.zeros(dtype)
-    dr.enable_grad(handle)
-    return dr.custom(FromTorch, arg, handle)

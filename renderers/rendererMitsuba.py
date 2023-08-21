@@ -8,7 +8,7 @@ from mitsuba.scalar_rgb import Transform4f as T
 class RendererMitsuba(Renderer):
 
     def __init__(self, samples, bounces, device, screenWidth, screenHeight):
-        self.spp = samples
+        self.samples = samples
         self.bounces = bounces
         self.device = torch.device(device)
         self.counter = 0
@@ -130,7 +130,7 @@ class RendererMitsuba(Renderer):
         """
         self.fov =  torch.tensor([360.0 * torch.atan(self.screenWidth / (2.0 * focals)) / torch.pi]) # from renderer.py
         
-        img =  RendererMitsuba.render_torch_djit(self.scene, cameraVertices.squeeze(0), indices.to(torch.float32), normal.squeeze(0), uv, diffuseTexture.squeeze(0), specularTexture.squeeze(0), roughnessTexture.squeeze(0), self.fov.item(), envMap.squeeze(0),self.spp) # returns a pytorch
+        img =  RendererMitsuba.render_torch_djit(self.scene, cameraVertices.squeeze(0), indices.to(torch.float32), normal.squeeze(0), uv, diffuseTexture.squeeze(0), specularTexture.squeeze(0), roughnessTexture.squeeze(0), self.fov.item(), envMap.squeeze(0),self.samples) # returns a pytorch
         rgb_channels = img[..., :3]
         #debug alpha
         mask_alpha = img[..., 4:]  # only take the last channel ?

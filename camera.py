@@ -19,8 +19,7 @@ class Camera:
         self.rotZm1 = torch.tensor(np.array([[1., 0., 0.], [0., 1., 0.], [0., 0., 0.]]), dtype=torch.float, device=device)
         self.rotZm2 = torch.tensor(np.array([[0., -1., 0.], [1., 0., 0.], [0., 0., 0.]]), dtype=torch.float, device=device)
         self.rotZm3 = torch.tensor(np.array([[0., 0., 0.], [0., 0., 0.], [0., 0., 1.]]), dtype=torch.float, device=device)
-        
-        self.matrix = None
+
     def computeTransformation(self, rotation, translation):
         '''
         create a transformation matrix from rotation and translation
@@ -44,8 +43,6 @@ class Camera:
 
         rotMatrix = torch.matmul(rotz, torch.matmul(roty, rotx))
         transformation = torch.cat((rotMatrix, translation[ :, :, None]), -1)
-        
-        self.matrix = transformation
         return transformation
 
     def transformVertices(self, vertices, translation, rotation):
@@ -66,4 +63,3 @@ class Camera:
         out = torch.matmul(transformationMatrix.view(1, framesNumber, 1, 3, 4),
                            vertices.view(framesNumber, verticesNumber, 4, 1)).view(1, framesNumber, verticesNumber, 3)
         return out[0]
-     
