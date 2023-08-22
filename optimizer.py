@@ -156,13 +156,13 @@ class Optimizer:
     def debugFrame(self, image, target, diff, diffuseTexture, specularTexture, roughnessTexture, outputPrefix):
         """generate a debug frame to display the current render, the difference with the target and what each texture looks like
         Args:
-            image (_type_): _description_
-            target (_type_): _description_
-            diff (_type_): _description_
-            diffuseTexture (_type_): _description_
-            specularTexture (_type_): _description_
-            roughnessTexture (_type_): _description_
-            outputPrefix (_type_): _description_
+            image ([B, X, Y, 3]): input
+            target ([B, X, Y, 3]): ref
+            diff ( [B, X, Y, 3]): difference (only on mask)
+            diffuseTexture: [n, resX, resY, 3] or [1, resX, resY, 3]
+            specularTexture: [n, resX, resY, 3] or [1, resX, resY, 3]
+            roughnessTexture: [n, resX, resY, 1] or [1, resX, resY, 3]
+            outputPrefix (string): path of the output folder
         """
         for i in range(image.shape[0]):
             diffuse = cv2.resize(cv2.cvtColor(diffuseTexture[self.getTextureIndex(i)].detach().cpu().numpy(), cv2.COLOR_BGR2RGB), (target.shape[2], target.shape[1]))
@@ -178,15 +178,15 @@ class Optimizer:
             # Concatenate vertically - combined image with textures 
             debugFrame = cv2.vconcat([np.power(np.clip(res, 0.0, 1.0), 1.0 / 2.2) * 255, tex * 255])
             
-            cv2.imwrite(outputPrefix  + '.png', debugFrame)
+            cv2.imwrite(outputPrefix + '_' +str(i)+ '_.png', debugFrame)
             
     # TODO needed ?
     def debugRender(self, image, outputPrefix):
         """generate a single render of the current step
 
         Args:
-            image (_type_): _description_
-            outputPrefix (_type_): _description_
+            image ([B, X, Y, 3]): input
+            outputPrefix (string): path of the output folder
         """
         for i in range(image.shape[0]):
             res = cv2.hconcat([cv2.cvtColor(image[i].detach().cpu().numpy(), cv2.COLOR_BGR2RGB)])
@@ -569,7 +569,7 @@ class Optimizer:
         if checkpoint is not None and checkpoint != '':
             print('resuming optimization from checkpoint: ',checkpoint, file=sys.stderr, flush=True)
             self.loadParameters(checkpoint)
-
+        print('running with ' + self.rendererName)
         import time
         start = time.time()
         if doStep1:
@@ -634,4 +634,5 @@ if __name__ == "__main__":
                   checkpoint= checkpoint,
                   doStep1= doStep1,
                   doStep2 = doStep2,
-                  doStep3= doStep3)
+                  doStep3= doStep3,
+                  rendererName=config.rendererName)
