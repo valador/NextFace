@@ -110,7 +110,7 @@ class RendererMitsuba(Renderer):
         
     # overloading this method
     
-    def render(self, cameraVertices, indices, normal, uv, diffAlbedo, diffuseTexture, specularTexture, roughnessTexture, shCoeffs, shBasisFunctions, focals, envMap, renderAlbedo=False, lightingOnly=False, interpolation=False):
+    def render(self, cameraVertices, indices, normals, uv, diffAlbedo, diffuseTexture, specularTexture, roughnessTexture, shCoeffs, sphericalHarmonics, focals, renderAlbedo=False, lightingOnly=False, interpolation=False):
         """
         middle function between pytorch and mitsuba, we take the tensor values from our pipeline and give it to our standalone wrapper
 
@@ -128,9 +128,13 @@ class RendererMitsuba(Renderer):
         Returns:
             image Tensor: the render based on our inputs
         """
+        envMap = sphericalHarmonics.toEnvMap(shCoeffs)
+        assert(envMap.dim() == 4 and envMap.shape[-1] == 3)
+        assert(cameraVertices.shape[0] == envMap.shape[0])
+
         self.fov =  torch.tensor([360.0 * torch.atan(self.screenWidth / (2.0 * focals)) / torch.pi]) # from renderer.py
         
-        img =  RendererMitsuba.render_torch_djit(self.scene, cameraVertices.squeeze(0), indices.to(torch.float32), normal.squeeze(0), uv, diffuseTexture.squeeze(0), specularTexture.squeeze(0), roughnessTexture.squeeze(0), self.fov.item(), envMap.squeeze(0),self.samples) # returns a pytorch
+        img =  RendererMitsuba.render_torch_djit(self.scene, cameraVertices.squeeze(0), indices.to(torch.float32), normals.squeeze(0), uv, diffuseTexture.squeeze(0), specularTexture.squeeze(0), roughnessTexture.squeeze(0), self.fov.item(), envMap.squeeze(0),self.samples) # returns a pytorch
         rgb_channels = img[..., :3]
         #debug alpha
         mask_alpha = img[..., 4:]  # only take the last channel ?

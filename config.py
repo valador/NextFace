@@ -58,6 +58,7 @@ class Config:
 		self.rtTrainingSamples = 8  # number of ray tracing to use during training
 		self.bounces = 2 # number of bounces
 		self.smoothing = True #should we smooth the face when doing diff
+		self.rendererName = 'redner'
 	def fillFromDicFile(self, filePath):
 		'''
 		overwrite default config

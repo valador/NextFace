@@ -103,9 +103,16 @@ class Pipeline:
         return transformedVertices
 
     # generic render method
-    def render(self, diffuseTextures = None, specularTextures = None, roughnessTextures = None,  renderAlbedo= False, lightingOnly=False, interpolation = False ):
-        vertices, diffAlbedo, specAlbedo = self.morphableModel.computeShapeAlbedo(self.vShapeCoeff, self.vExpCoeff, self.vAlbedoCoeff)
-        cameraVerts = self.camera.transformVertices(vertices, self.vTranslation, self.vRotation)
+    def render(self, cameraVerts = None, diffAlbedo = None, specAlbedo = None, diffuseTextures = None, specularTextures = None, roughnessTextures = None,  renderAlbedo= False, lightingOnly=False, interpolation = False ):
+        
+        if cameraVerts is None :
+            vertices = self.morphableModel.computeShape(self.vShapeCoeff, self.vExpCoeff)
+            cameraVerts = self.camera.transformVertices(vertices, self.vTranslation, self.vRotation)
+        if diffAlbedo is None :
+            diffAlbedo = self.morphableModel.computeDiffuseAlbedo(self.vAlbedoCoeff)
+        if specAlbedo is None:
+            specAlbedo = self.morphableModel.computeSpecularAlbedo( self.vAlbedoCoeff)
+
 
         #compute normals
         normals = self.morphableModel.meshNormals.computeNormals(cameraVerts)
@@ -119,18 +126,13 @@ class Pipeline:
         if roughnessTextures is None:
             roughnessTextures  = self.vRoughness
 
-        envMap = self.sh.toEnvMap(self.vShCoeffs)
-
-        assert(envMap.dim() == 4 and envMap.shape[-1] == 3)
         assert (cameraVerts.dim() == 3 and cameraVerts.shape[-1] == 3)
         assert (diffuseTextures.dim() == 4 and diffuseTextures.shape[1] == diffuseTextures.shape[2] == self.morphableModel.getTextureResolution() and diffuseTextures.shape[-1] == 3)
         assert (specularTextures.dim() == 4 and specularTextures.shape[1] == specularTextures.shape[2] == self.morphableModel.getTextureResolution() and specularTextures.shape[-1] == 3)
         assert (roughnessTextures.dim() == 4 and roughnessTextures.shape[1] == roughnessTextures.shape[2] == self.morphableModel.getTextureResolution() and roughnessTextures.shape[-1] == 1)
-        assert(cameraVerts.shape[0] == envMap.shape[0])
         assert (diffuseTextures.shape[0] == specularTextures.shape[0] == roughnessTextures.shape[0])
-        # TODO only do this with vertex based
-        shBasisFunctions = self.sh.preComputeSHBasisFunction(normals, sh_order=8)
-        return self.renderer.render(cameraVerts, self.faces32, normals, self.uvMap, diffAlbedo, diffuseTextures, specularTextures, torch.clamp(roughnessTextures, 1e-20, 10.0), self.vShCoeffs, shBasisFunctions, self.vFocals, envMap,renderAlbedo, lightingOnly, interpolation)
+        
+        return self.renderer.render(cameraVerts, self.faces32, normals, self.uvMap, diffAlbedo, torch.clamp(diffuseTextures, 1e-20, 10.0), torch.clamp(specularTextures, 1e-20, 10.0), torch.clamp(roughnessTextures, 1e-20, 10.0), self.vShCoeffs, self.sh, self.vFocals, renderAlbedo, lightingOnly, interpolation)
     
     def landmarkLoss(self, cameraVertices, landmarks, focals, cameraCenters,  debugDir = None):
         '''

@@ -79,7 +79,7 @@ class RendererVertexBased(Renderer):
         # Interpolation if needed
         if interpolation:
             vertices_in_screen_space = vertices_in_screen_space.long()  # Convert to long for indexing
-            vertices_in_screen_space.clamp_(0, max=self.screenWidth-1)  # Clamp to valid pixel range TODO change for bigger width + height values
+            vertices_in_screen_space.clamp_(0, max=self.screenWidth-1)  # Clamp to valid pixel range 
             y_indices, x_indices = vertices_in_screen_space[:, 1], vertices_in_screen_space[:, 0] # create two tensors for values
             # Perform scatter operation + add alpha values
             image_data[0, y_indices, x_indices, :3] += colors_in_screen_space # add colors to pixels
@@ -101,7 +101,7 @@ class RendererVertexBased(Renderer):
         else:
             # Convert vertices and colors to an image without interpolation
             vertices_in_screen_space = vertices_in_screen_space.long()  # Convert to long for indexing
-            vertices_in_screen_space.clamp_(0, max=self.screenWidth-1)  # Clamp to valid pixel range TODO change for bigger width + height values
+            vertices_in_screen_space.clamp_(0, max=self.screenWidth-1)  # Clamp to valid pixel range 
             y_indices, x_indices = vertices_in_screen_space[:, 1], vertices_in_screen_space[:, 0] # create two tensors for values
             # Perform scatter operation + add alpha values
             counter[0, y_indices, x_indices] += 1 # count all the pixels that have a vertex on them
@@ -166,12 +166,11 @@ class RendererVertexBased(Renderer):
         # ])
         return projMatrix
     # overloading this method
-    def render(self, cameraVertices, indices, normals, uv, diffAlbedo, diffuseTexture, specularTexture, roughnessTexture, shCoeffs, shBasisFunctions, focals, envMap, renderAlbedo=False, lightingOnly=False, interpolation=False ):
+    def render(self, cameraVertices, indices, normals, uv, diffAlbedo, diffuseTexture, specularTexture, roughnessTexture, shCoeffs, sphericalHarmonics, focals, renderAlbedo=False, lightingOnly=False, interpolation=False ):
         """take inputs, generate color for each vertex and project them on the screen
 
         Args:
             cameraVertices (_type_): _description_
-            normals (_type_): _description_
             diffAlbedo (_type_): _description_
             shCoeffs (_type_): _description_
             shBasisFunctions (_type_): _description_
@@ -183,6 +182,8 @@ class RendererVertexBased(Renderer):
         Returns:
             _type_: _description_
         """
+        shBasisFunctions = sphericalHarmonics.preComputeSHBasisFunction(normals, sh_order=8)
+
         vertexColors = self.computeVertexColor(diffAlbedo, shCoeffs, shBasisFunctions, renderAlbedo=renderAlbedo, lightingOnly=lightingOnly)
         img =  self.computeVertexImage(cameraVertices, vertexColors, normals, focals, interpolation=interpolation)
         return img

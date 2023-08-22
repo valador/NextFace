@@ -156,7 +156,7 @@ class RendererRedner(Renderer):
         self.counter += 1
         return images
     
-    def render(self, cameraVertices, indices, normals, uv, diffAlbedo, diffuseTextures, specularTextures, roughnessTextures, shCoeffs, shBasisFunctions, focals, envMap, renderAlbedo=False, lightingOnly=False, interpolation=False ):
+    def render(self, cameraVertices, indices, normals, uv, diffAlbedo, diffuseTexture, specularTexture, roughnessTexture, shCoeffs, sphericalHarmonics, focals, renderAlbedo=False, lightingOnly=False, interpolation=False):
         '''
         ray trace an image given camera vertices and corresponding textures
         :param cameraVerts: camera vertices tensor [n, verticesNumber, 3]
@@ -167,8 +167,11 @@ class RendererRedner(Renderer):
         :param vertexBased: if True we render by vertex instead of ray tracing
         :return: ray traced images [n, resX, resY, 4]
         '''
-
-        scenes = self.buildScenes(cameraVertices, indices, normals, uv, diffuseTextures, specularTextures, torch.clamp(roughnessTextures, 1e-20, 10.0), focals, envMap)
+        envMap = sphericalHarmonics.toEnvMap(shCoeffs)
+        assert(envMap.dim() == 4 and envMap.shape[-1] == 3)
+        assert(cameraVertices.shape[0] == envMap.shape[0])
+        
+        scenes = self.buildScenes(cameraVertices, indices, normals, uv, diffuseTexture, specularTexture, torch.clamp(roughnessTexture, 1e-20, 10.0), focals, envMap)
         if renderAlbedo:
             images = self.renderImageAlbedo(scenes)
         else:
