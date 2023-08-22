@@ -122,28 +122,28 @@ class SphericalHarmonics:
         # if self.Y is not None:
         #     return self.Y
         
-        # numCoeffs = (sh_order + 1) ** 2  # Calculate the number of SH coefficients
+        numCoeffs = (sh_order + 1) ** 2  # Calculate the number of SH coefficients
        
-        # # Pre-allocate the tensor to hold SH basis
-        # Y = torch.empty((normals.shape[0], normals.shape[1], numCoeffs), device=normals.device)
-        # theta = torch.acos(normals[..., 2:]).squeeze()
-        # phi = torch.atan2(normals[..., 1:2], normals[..., :1]).squeeze()
+        # Pre-allocate the tensor to hold SH basis
+        Y = torch.empty((normals.shape[0], normals.shape[1], numCoeffs), device=normals.device)
+        theta = torch.acos(normals[..., 2:]).squeeze()
+        phi = torch.atan2(normals[..., 1:2], normals[..., :1]).squeeze()
 
-        # # Compute SH basis for each l, m and normal
-        # element = 0
-        # for l in range(sh_order+1):
-        #     for m in range(-l, l + 1):
-        #         Y_l_m = self.SH(l, m, theta, phi)
-        #         Y[..., element] = Y_l_m.squeeze()
-        #         element += 1
-        # self.Y = Y
-        # return Y
-        return self.sh_eval_9(normals)
+        # Compute SH basis for each l, m and normal
+        element = 0
+        for l in range(sh_order+1):
+            for m in range(-l, l + 1):
+                Y_l_m = self.SH(l, m, theta, phi)
+                Y[..., element] = Y_l_m.squeeze()
+                element += 1
+        self.Y = Y
+        return Y
+        # return self.sh_eval_9(normals)
     
     
     # take drjit method in our code
     def sh_eval_9(self, d) :
-        assert (d.shape == 3, "The parameter 'd' should be a 3D vector.")
+        # assert (d.shape == 3, "The parameter 'd' should be a 3D vector.")
     
         x = d[:, :, 0]
         y = d[:, :, 1]

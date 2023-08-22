@@ -115,6 +115,7 @@ class Optimizer:
         :param sharedIdentity: if true than the shape and albedo coeffs are equal to 1, as they belong to the same person identity
         :return:
         '''
+        print(os.getcwd())
         if os.path.isfile(imagePath):
             self.inputImage = Image(imagePath, self.device, self.config.maxResolution)
         else:
