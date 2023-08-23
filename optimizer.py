@@ -347,15 +347,14 @@ class Optimizer:
             diffuseTextures = self.pipeline.morphableModel.generateTextureFromAlbedo(diffAlbedo)
             specularTextures = self.pipeline.morphableModel.generateTextureFromAlbedo(specAlbedo)
             roughTextures = self.pipeline.vRoughness.detach().clone() if self.vEnhancedRoughness is None else self.vEnhancedRoughness.detach().clone()
-
-            rgba_img = self.pipeline.render(cameraVerts=cameraVerts,diffAlbedo=diffAlbedo, specAlbedo=specAlbedo, diffuseTextures=diffuseTextures,specularTextures=specularTextures,roughnessTextures=roughTextures) 
-            mask_alpha = rgba_img[...,3:]            
+            images = self.pipeline.render(cameraVerts=cameraVerts,diffAlbedo=diffAlbedo, specAlbedo=specAlbedo, diffuseTextures=diffuseTextures,specularTextures=specularTextures,roughnessTextures=roughTextures) 
+            mask_alpha = images[...,3:]            
             # gaussian smooth the render 
             if self.config.smoothing :
-                smoothedImage = smoothImage(rgba_img[..., 0:3], self.smoothing)            
+                smoothedImage = smoothImage(images[..., 0:3], self.smoothing)            
                 diff = mask_alpha * (smoothedImage - inputTensor).abs()
             else :
-                diff = mask_alpha * (rgba_img[..., 0:3] - inputTensor).abs()
+                diff = mask_alpha * (images[..., 0:3] - inputTensor).abs()
             photoLoss = 1000.* diff.mean()
             landmarksLoss = self.config.weightLandmarksLossStep2 *  self.landmarkLoss(cameraVerts, self.landmarks)
             regLoss = 0.0001 * self.pipeline.vShCoeffs.pow(2).mean()
@@ -374,12 +373,12 @@ class Optimizer:
                 print(f"Iteration {iter:03d}: Loss {self.rendererName} = {losses[0]:6f}", end='\r')
 
             if self.config.debugFrequency > 0 and iter % self.config.debugFrequency == 0:
-                self.debugFrame(rgba_img[..., 0:3], inputTensor, diff, diffuseTextures, specularTextures, roughTextures, self.debugDir + '/results/'+self.rendererName+'_step2_' + str(iter))
+                self.debugFrame(images[..., 0:3], inputTensor, diff, diffuseTextures, specularTextures, roughTextures, self.debugDir + '/results/'+self.rendererName+'_step2_' + str(iter))
                 # generate one with mitsuba for reference
                 if self.rendererName == 'vertex':
                     lightingVertexRender = self.pipeline.render(cameraVerts=cameraVerts,diffAlbedo=diffAlbedo, specAlbedo=specAlbedo, diffuseTextures=diffuseTextures,specularTextures=specularTextures,roughnessTextures=roughTextures, lightingOnly=True)
                     albedoVertexRender = self.pipeline.render(cameraVerts=cameraVerts,diffAlbedo=diffAlbedo, specAlbedo=specAlbedo, diffuseTextures=diffuseTextures,specularTextures=specularTextures,roughnessTextures=roughTextures, renderAlbedo=True)
-                    self.debugIteration(rgba_img[..., 0:3], inputTensor,diff, albedoVertexRender, lightingVertexRender, self.debugDir + '/results/'+self.rendererName+ str(iter)+'_detailled_step2') # custom made
+                    self.debugIteration(images[..., 0:3], inputTensor,diff, albedoVertexRender, lightingVertexRender, self.debugDir + '/results/'+self.rendererName+ str(iter)+'_detailled_step2') # custom made
                 # also save obj
                 cameraNormals = self.pipeline.morphableModel.computeNormals(cameraVerts) # only used of obj (might be too slow)
                 for i in range(inputTensor.shape[0]):
@@ -563,9 +562,14 @@ class Optimizer:
         '''
         self.rendererName = rendererName
         self.pipeline.reloadRenderer(rendererName) # load the appropriate renderer
+        
         self.setImage(imagePathOrDir, sharedIdentity)
         assert(self.framesNumber >= 1) #could not load any image from path
-
+        
+        if self.rendererName == 'mitsuba' and self.framesNumber > 1 :
+            print("batch rendering is not implemented on Mitsuba")
+            exit(0)
+        
         if checkpoint is not None and checkpoint != '':
             print('resuming optimization from checkpoint: ',checkpoint, file=sys.stderr, flush=True)
             self.loadParameters(checkpoint)

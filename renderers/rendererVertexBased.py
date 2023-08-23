@@ -191,6 +191,6 @@ class RendererVertexBased(Renderer):
         shBasisFunctions = sphericalHarmonics.preComputeSHBasisFunction(normals, sh_order=8)
 
         vertexColors = self.computeVertexColor(diffAlbedo, shCoeffs, shBasisFunctions, renderAlbedo=renderAlbedo, lightingOnly=lightingOnly)
-        img =  self.computeVertexImage(cameraVertices, vertexColors, normals, focals, interpolation=interpolation)
-        return img
+        imgs =  self.computeVertexImage(cameraVertices, vertexColors, normals, focals, interpolation=interpolation)
+        return imgs
         

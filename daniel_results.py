@@ -14,7 +14,7 @@ config.path = './baselMorphableModel/' # Verify your path
 # Directory path containing all images
 imageFolderPath = './input/test/'
 
-outputDir = './output/'
+outputDir = './output/test/all_images'
 #setup
 # Extract the folder name 
 folder_name = os.path.basename(imageFolderPath.strip('/'))
@@ -25,20 +25,15 @@ if not os.path.exists(outputDir):
     
 torch.cuda.set_device(0)
 
-# Loop through all JPG images in the specified folder
-for imagePath in glob.glob(imageFolderPath + '*.png'):
-    torch.cuda.empty_cache()
-    # Determine output directory based on image name
-    image_name = os.path.basename(imagePath.strip('/'))
-    outputImageDir = outputDir + image_name
-    optimizer = Optimizer(outputImageDir, config)
-    
-    # Run the optimization for the current image
-    # optimizer.run(imagePath, doStep1=True, doStep2=True, doStep3=True, renderer="vertex")
-    # Based on the vertex_based optimization, try to get to the same result with the Mitsuba one
-    # optimizer.run(outputImageDir+'/debug/results/ref.png', checkpoint=outputImageDir+'/checkpoints/stage1_output.pickle', doStep1=False, doStep2=True, doStep3=False, renderer="mitsuba")
-    # optimizer.run(imagePath, doStep1=True, doStep2=True, doStep3=True, rendererName="redner")
-    optimizer.run(imagePath, doStep1=True, doStep2=True, doStep3=True, rendererName="mitsuba")
-    optimizer.run(imagePath, doStep1=True, doStep2=True, doStep3=True, rendererName="vertex")
-    # optimizer.run(imagePath, checkpoint=outputImageDir+'/checkpoints/stage2_output.pickle',doStep1=False, doStep2=False, doStep3=True, renderer="mitsuba")
-    # optimizer.run(imagePath, doStep1=True, doStep2=True, doStep3=False, renderer="redner")
+torch.cuda.empty_cache()
+optimizer = Optimizer(outputDir, config)
+
+# Run the optimization for the current image
+# optimizer.run(imagePath, doStep1=True, doStep2=True, doStep3=True, renderer="vertex")
+# Based on the vertex_based optimization, try to get to the same result with the Mitsuba one
+# optimizer.run(outputImageDir+'/debug/results/ref.png', checkpoint=outputImageDir+'/checkpoints/stage1_output.pickle', doStep1=False, doStep2=True, doStep3=False, renderer="mitsuba")
+# optimizer.run(imagePath, doStep1=True, doStep2=True, doStep3=True, rendererName="redner")
+# optimizer.run(imagePath, doStep1=True, doStep2=True, doStep3=True, rendererName="mitsuba")
+optimizer.run(imageFolderPath, doStep1=False, doStep2=True, doStep3=True, rendererName="mitsuba")
+# optimizer.run(imagePath, checkpoint=outputImageDir+'/checkpoints/stage2_output.pickle',doStep1=False, doStep2=False, doStep3=True, renderer="mitsuba")
+# optimizer.run(imagePath, doStep1=True, doStep2=True, doStep3=False, renderer="redner")

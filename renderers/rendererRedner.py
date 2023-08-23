@@ -90,29 +90,29 @@ class RendererRedner(Renderer):
 
         return cam
 
-    def buildScenes(self, vertices, indices, normal, uv, diffuse, specular, roughness, focal, envMap):
+    def buildScenes(self, vertices, indices, normals, uv, diffuse, specular, roughness, focal, envMaps):
         '''
         build multiple pyredner scenes used for path tracing (uv mapping and indices are the same for all scenes)
         :param vertices: [n, verticesNumber, 3]
         :param indices: [indicesNumber, 3]
-        :param normal: [n, verticesNumber, 3]
+        :param normals: [n, verticesNumber, 3]
         :param uv: [verticesNumber, 2]
         :param diffuse: [n, resX, resY, 3] or [1, resX, resY, 3]
         :param specular: [n, resX, resY, 3] or [1, resX, resY, 3]
         :param roughness: [n, resX, resY, 1] or [1, resX, resY, 3]
         :param focal: [n]
-        :param envMap: [n, resX, resY, 3]
+        :param envMaps: [n, resX, resY, 3]
         :return: return list of pyredner scenes
         '''
-        assert(vertices.dim() == 3 and vertices.shape[-1] == 3 and normal.dim() == 3 and normal.shape[-1] == 3)
+        assert(vertices.dim() == 3 and vertices.shape[-1] == 3 and normals.dim() == 3 and normals.shape[-1] == 3)
         assert (indices.dim() == 2 and indices.shape[-1] == 3)
         assert (uv.dim() == 2 and uv.shape[-1] == 2)
         assert (diffuse.dim() == 4 and diffuse.shape[-1] == 3 and
                 specular.dim() == 4 and specular.shape[-1] == 3 and
                 roughness.dim() == 4 and roughness.shape[-1] == 1)
         assert(focal.dim() == 1)
-        assert(envMap.dim() == 4 and envMap.shape[-1] == 3)
-        assert(vertices.shape[0] == focal.shape[0] == envMap.shape[0])
+        assert(envMaps.dim() == 4 and envMaps.shape[-1] == 3)
+        assert(vertices.shape[0] == focal.shape[0] == envMaps.shape[0])
         assert(diffuse.shape[0] == specular.shape[0] == roughness.shape[0])
         assert (diffuse.shape[0] == 1 or diffuse.shape[0] == vertices.shape[0])
         sharedTexture = True if diffuse.shape[0] == 1 else False
@@ -123,9 +123,9 @@ class RendererRedner(Renderer):
             mat = pyredner.Material(pyredner.Texture(diffuse[texIndex]),
                                     pyredner.Texture(specular[texIndex]) if specular is not None else None,
                                     pyredner.Texture(roughness[texIndex]) if roughness is not None else None)
-            obj = pyredner.Object(vertices[i], indices, mat, uvs=uv, normals=normal[i] if normal is not None else None)
+            obj = pyredner.Object(vertices[i], indices, mat, uvs=uv, normals=normals[i] if normals is not None else None)
             cam =  self.setupCamera(focal[i], self.screenWidth, self.screenHeight)
-            scene = pyredner.Scene(cam, materials=[mat], objects=[obj], envmap=pyredner.EnvironmentMap(envMap[i]))
+            scene = pyredner.Scene(cam, materials=[mat], objects=[obj], envmap=pyredner.EnvironmentMap(envMaps[i]))
             scenes.append(scene)
 
         return scenes
@@ -167,11 +167,11 @@ class RendererRedner(Renderer):
         :param vertexBased: if True we render by vertex instead of ray tracing
         :return: ray traced images [n, resX, resY, 4]
         '''
-        envMap = sphericalHarmonics.toEnvMap(shCoeffs)
-        assert(envMap.dim() == 4 and envMap.shape[-1] == 3)
-        assert(cameraVertices.shape[0] == envMap.shape[0])
+        envMaps = sphericalHarmonics.toEnvMap(shCoeffs)
+        assert(envMaps.dim() == 4 and envMaps.shape[-1] == 3)
+        assert(cameraVertices.shape[0] == envMaps.shape[0])
         
-        scenes = self.buildScenes(cameraVertices, indices, normals, uv, diffuseTexture, specularTexture, torch.clamp(roughnessTexture, 1e-20, 10.0), focals, envMap)
+        scenes = self.buildScenes(cameraVertices, indices, normals, uv, diffuseTexture, specularTexture, torch.clamp(roughnessTexture, 1e-20, 10.0), focals, envMaps)
         if renderAlbedo:
             images = self.renderImageAlbedo(scenes)
         else:
