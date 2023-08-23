@@ -59,6 +59,8 @@ class RendererVertexBased(Renderer):
         width = self.screenWidth
         height = self.screenHeight
         images_data = torch.zeros((B, height, width, 4), dtype=torch.float32, device=self.device)
+        alpha_channel = torch.zeros((B, width, height, 1)).to(self.device)
+        counter = torch.zeros((B, height, width, 3), dtype=torch.float32, device=self.device)
         for i in range(B):
             fov = torch.tensor([360.0 * torch.atan(width / (2.0 * focals[i])) / torch.pi]) # from renderer.py
 
@@ -80,8 +82,6 @@ class RendererVertexBased(Renderer):
             mask = mask.squeeze(0)
             colors_in_screen_space = verticesColor_single[mask]
 
-            alpha_channel = torch.zeros((1, width, height, 1)).to(self.device)
-            counter = torch.zeros((1, height, width, 3), dtype=torch.float32, device=self.device)
             # Interpolation if needed
             if interpolation:
                 vertices_in_screen_space = vertices_in_screen_space.long()  # Convert to long for indexing
@@ -110,18 +110,18 @@ class RendererVertexBased(Renderer):
                 vertices_in_screen_space.clamp_(0, max=self.screenWidth-1)  # Clamp to valid pixel range 
                 y_indices, x_indices = vertices_in_screen_space[:, 1], vertices_in_screen_space[:, 0] # create two tensors for values
                 # Perform scatter operation + add alpha values
-                counter[0, y_indices, x_indices] += 1 # count all the pixels that have a vertex on them
+                counter[i, y_indices, x_indices] += 1 # count all the pixels that have a vertex on them
                 images_data[i, y_indices, x_indices, :3] += colors_in_screen_space # add colors to pixels
                 
             # Update the alpha channel of those pixels to 1 where we have updated the color
-            alpha_mask = counter[0, y_indices, x_indices].sum(dim=1) > 0 # create a mask for each vertex where there is at least one pixel splat there
-            alpha_channel[0, y_indices[alpha_mask], x_indices[alpha_mask]] = 1.0 # put a 1.0 to all the pixels that are in our mask
+            alpha_mask = counter[i, y_indices, x_indices].sum(dim=1) > 0 # create a mask for each vertex where there is at least one pixel splat there
+            alpha_channel[i, y_indices[alpha_mask], x_indices[alpha_mask]] = 1.0 # put a 1.0 to all the pixels that are in our mask
             # Average the color and clamp at 1
-            images_data[i, :, :, :3] /= counter[0].clamp(min=1) # average tje color and clamp to one so that we dont divide by one
-            images_data = images_data.clamp(0, 1) # clamp values of color and alpha to be between 0 and 1
+        images_data[..., :3] /= counter.clamp(min=1) # average tje color and clamp to one so that we dont divide by one
+        images_data = images_data.clamp(0, 1) # clamp values of color and alpha to be between 0 and 1
 
-            # Add alpha channel to the images_data
-            images_data[..., 3:] = alpha_channel 
+        # Add alpha channel to the images_data
+        images_data[..., 3:] = alpha_channel 
        
         return images_data
     
