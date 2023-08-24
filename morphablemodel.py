@@ -194,22 +194,6 @@ class MorphableModel:
 
         vertices = self.shapeMean + torch.einsum('ni,ijk->njk', (shapeCoff, self.shapePca)) + torch.einsum('ni,ijk->njk', (expCoff, self.expressionPca))
         return vertices
-    def computeShapeMitsuba(self, shapeCoff, expCoff):
-        '''
-        compute vertices from shape and exp coeff
-        :param shapeCoff mi.TensorXf: [n, self.shapeBasisSize]
-        :param expCoff tensor: [n, self.expBasisSize]
-        :return: return vertices mi.TensorXf [n, verticesNumber, 3]
-        '''
-        assert (shapeCoff.ndim == 2 and shapeCoff.shape[1] == self.shapeBasisSize)
-        assert (expCoff.dim() == 2 and expCoff.shape[1] == self.expBasisSize)
-        
-        shapeProd = mi.TensorXf(dr.matmul(shapeCoff, self.shapePca.transpose(0,1)), shape=(shapeCoff.shape[0], self.shapePca.shape[1], self.shapePca.shape[2])).sum(1)
-        expProd = mi.TensorXf(torch.matmul(expCoff, self.expressionPca.transpose(0,1)), shape=(expCoff.shape[0], self.expressionPca.shape[1], self.expressionPca.shape[2])).sum(1)
-        vertices = mi.TensorXf(self.shapeMean) + shapeProd + expProd
-
-        vertices = mi.TensorXf(self.shapeMean) + torch.einsum('ni,ijk->njk', (shapeCoff, self.shapePca)) + torch.einsum('ni,ijk->njk', (expCoff, self.expressionPca))
-        return vertices
 
     def computeNormals(self, vertices):
         '''
@@ -256,21 +240,6 @@ class MorphableModel:
         specAlbedo = self.computeSpecularAlbedo(albedoCoeff)
         return vertices, diffAlbedo, specAlbedo
 
-    def computeShapeAlbedoMitsuba(self, shapeCoeff, expCoeff, albedoCoeff):
-        '''
-        compute vertices  and diffuse/specular albedo from shape, exp and albedo coeff
-        :param shapeCoeff: tensor [n, self.shapeBasisSize]
-        :param expCoeff: tensor [n, self.expBasisSize]
-        :param albedoCoeff: tensor [n, self.albedoBasisSize]
-        :return: vertices [n, verticesNumber 3], diffuse albedo [n, verticesNumber 3], specAlbedo albedo [n, verticesNumber 3]
-        '''
-
-        vertices = self.computeShapeMitsuba(shapeCoeff, expCoeff)
-        diffAlbedo = self.computeDiffuseAlbedo(albedoCoeff)
-        specAlbedo = self.computeSpecularAlbedo(albedoCoeff)
-        return vertices, diffAlbedo, specAlbedo
-
-    
     def sample(self, shapeNumber = 1):
         '''
         random sample shape, expression, diffuse and specular albedo coeffs
