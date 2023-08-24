@@ -224,11 +224,11 @@ class Optimizer:
         lightingOnlyVertexRender = np.clip(lightingOnlyVertexRender, 0.0, 1.0)
 
         # OpenCV assumes images to be in BGR format. Convert RGB to BGR
-        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-        target = cv2.cvtColor(target, cv2.COLOR_RGB2BGR)
-        diff = cv2.cvtColor(diff, cv2.COLOR_RGB2BGR)
-        diffuseOnlyVertexRender = cv2.cvtColor(diffuseOnlyVertexRender, cv2.COLOR_RGB2BGR)
-        lightingOnlyVertexRender = cv2.cvtColor(lightingOnlyVertexRender, cv2.COLOR_RGB2BGR)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        target = cv2.cvtColor(target, cv2.COLOR_BGR2RGB)
+        diff = cv2.cvtColor(diff, cv2.COLOR_BGR2RGB)
+        diffuseOnlyVertexRender = cv2.cvtColor(diffuseOnlyVertexRender, cv2.COLOR_BGR2RGB)
+        lightingOnlyVertexRender = cv2.cvtColor(lightingOnlyVertexRender, cv2.COLOR_BGR2RGB)
 
         # Concatenate images horizontally and vertically
         res = cv2.hconcat([image, target, diff])
@@ -239,13 +239,10 @@ class Optimizer:
             padding = np.zeros((ref.shape[0], pad_width, ref.shape[2]), dtype=np.float32)
             ref = cv2.hconcat([ref, padding])
             
-        debugFrame = cv2.vconcat([res, ref])
-        # Multiplying by 255 because OpenCV uses 8-bit values + add gamma        
-        debugFrame = (debugFrame* 255).astype(np.uint8)
-
+        debugFrame = cv2.vconcat([np.power(np.clip(res, 0.0, 1.0), 1.0 / 2.2) * 255, ref * 255])
+        
         # Save the image
         cv2.imwrite(outputPrefix + '.png', debugFrame)
-        # TODO needed ?
     def debugTensor(self, debugTensor):
         """display a tensor of shape [x, y, 3]
 
@@ -347,7 +344,7 @@ class Optimizer:
             diffuseTextures = self.pipeline.morphableModel.generateTextureFromAlbedo(diffAlbedo)
             specularTextures = self.pipeline.morphableModel.generateTextureFromAlbedo(specAlbedo)
             roughTextures = self.pipeline.vRoughness.detach().clone() if self.vEnhancedRoughness is None else self.vEnhancedRoughness.detach().clone()
-            images = self.pipeline.render(cameraVerts=cameraVerts,diffAlbedo=diffAlbedo, specAlbedo=specAlbedo, diffuseTextures=diffuseTextures,specularTextures=specularTextures,roughnessTextures=roughTextures) 
+            images = self.pipeline.render(cameraVerts=cameraVerts, diffAlbedo=diffAlbedo, specAlbedo=specAlbedo, diffuseTextures=diffuseTextures, specularTextures=specularTextures, roughnessTextures=roughTextures) 
             mask_alpha = images[...,3:]            
             # gaussian smooth the render 
             if self.config.smoothing :
@@ -376,9 +373,9 @@ class Optimizer:
                 self.debugFrame(images[..., 0:3], inputTensor, diff, diffuseTextures, specularTextures, roughTextures, self.debugDir + '/results/'+self.rendererName+'_step2_' + str(iter))
                 # generate one with mitsuba for reference
                 if self.rendererName == 'vertex':
-                    lightingVertexRender = self.pipeline.render(cameraVerts=cameraVerts,diffAlbedo=diffAlbedo, specAlbedo=specAlbedo, diffuseTextures=diffuseTextures,specularTextures=specularTextures,roughnessTextures=roughTextures, lightingOnly=True)
-                    albedoVertexRender = self.pipeline.render(cameraVerts=cameraVerts,diffAlbedo=diffAlbedo, specAlbedo=specAlbedo, diffuseTextures=diffuseTextures,specularTextures=specularTextures,roughnessTextures=roughTextures, renderAlbedo=True)
-                    self.debugIteration(images[..., 0:3], inputTensor,diff, albedoVertexRender, lightingVertexRender, self.debugDir + '/results/'+self.rendererName+ str(iter)+'_detailled_step2') # custom made
+                    lightingVertexRender = self.pipeline.render(cameraVerts=cameraVerts, diffAlbedo=diffAlbedo, specAlbedo=specAlbedo, diffuseTextures=diffuseTextures, specularTextures=specularTextures, roughnessTextures=roughTextures, lightingOnly=True)
+                    albedoVertexRender = self.pipeline.render(cameraVerts=cameraVerts, diffAlbedo=diffAlbedo, specAlbedo=specAlbedo, diffuseTextures=diffuseTextures, specularTextures=specularTextures, roughnessTextures=roughTextures, renderAlbedo=True)
+                    self.debugIteration(images[..., 0:3], inputTensor, diff, albedoVertexRender, lightingVertexRender, self.debugDir + '/results/'+self.rendererName+ str(iter)+'_detailled_step2') # custom made
                 # also save obj
                 cameraNormals = self.pipeline.morphableModel.computeNormals(cameraVerts) # only used of obj (might be too slow)
                 for i in range(inputTensor.shape[0]):
