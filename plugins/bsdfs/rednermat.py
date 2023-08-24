@@ -71,10 +71,10 @@ class RednerMat(mi.BSDF):
         m = dr.normalize(si.wi + wo)
         roughness = dr.maximum(self.roughness.eval_1(si, active),0.00001)
         phong_exponent = RednerMat.roughness_to_phong(roughness)
-        D = dr.power(m.z, phong_exponent) * (phong_exponent + 2.0) / mi.Float(2 * math.pi)
-        specular_pdf = dr.select(dr.abs(dr.dot(m, wo)) > 0,  specular_pmf * D * m.z / (4.0 * dr.abs(dr.dot(m, wo))), 0.0)
+        D = dr.power(dr.maximum(m.z, 0.0), phong_exponent) * (phong_exponent + 2.0) / mi.Float(2 * math.pi)
+        specular_pdf = dr.select(dr.abs(dr.dot(m, wo)) > 0,  specular_pmf * D * dr.maximum(m.z, 0.0) / (4.0 * dr.abs(dr.dot(m, wo))), 0.0)
         
-        return diffuse_pdf + specular_pdf
+        return dr.select(wo.z > 0, diffuse_pdf + specular_pdf, 0)
     
     def eval_pdf(self, ctx: mi.BSDFContext, si: mi.SurfaceInteraction3f, wo: mi.Vector3f, active: bool = True) -> Tuple[mi.Color3f, float]:
         # TODO: Could be more efficient by fusing some computations
@@ -117,7 +117,6 @@ class RednerMat(mi.BSDF):
         bs.pdf = self.pdf(ctx, si, bs.wo, active)
         active &= bs.pdf > 0.0
         result = self.eval(ctx, si, bs.wo, active)
-        print(bs)
         
         return (bs, result / bs.pdf & active)
     
