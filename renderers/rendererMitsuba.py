@@ -4,6 +4,8 @@ import torch
 from renderers.renderer import Renderer 
 from mitsuba.scalar_rgb import Transform4f as T
 
+mi.set_variant('cuda_ad_rgb')
+import plugins
 
 class RendererMitsuba(Renderer):
 
@@ -58,14 +60,19 @@ class RendererMitsuba(Renderer):
                 "filename": "./output/mitsuba_default/mesh0.obj",
                 "face_normals": True,
                 'bsdf': {
-                    'type': 'principled',
-                    'base_color': {
+                    'type': 'rednermat',
+                    'albedo': {
                         'type': 'bitmap',
                         'filename': "./output/mitsuba_default/diffuseMap_0.png"
                     },                
                     'roughness':{
                         'type': 'bitmap',
                         'filename': "./output/mitsuba_default/roughnessMap_0.png"
+                        
+                    },
+                    'specular':{
+                        'type': 'bitmap',
+                        'filename': "./output/mitsuba_default/specularMap_0.png"
                         
                     }
                 }
@@ -97,8 +104,8 @@ class RendererMitsuba(Renderer):
         params["mesh.vertex_texcoords"] = dr.ravel(mi.TensorXf(uv))
         # update BSDF
         # https://mitsuba.readthedocs.io/en/stable/src/generated/plugins_bsdfs.html#smooth-diffuse-material-diffuse
-        params["mesh.bsdf.base_color.data"] = mi.TensorXf(diffuseTexture)
-        # params["mesh.bsdf.specular.data"] = mi.TensorXf(specularTexture) # principled doesnt support specular textures
+        params["mesh.bsdf.albedo.data"] = mi.TensorXf(diffuseTexture)
+        params["mesh.bsdf.specular.data"] = mi.TensorXf(specularTexture) # principled doesnt support specular textures
         params["mesh.bsdf.roughness.data"] = mi.TensorXf(roughnessTexture)
         
         #update envMaps

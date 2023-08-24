@@ -128,6 +128,6 @@ class RednerMat(mi.BSDF):
                 ']' % (self.albedo, self.roughness, self.specular))
     
     def traverse(self, callback):
-        callback.put_parameter('albedo', self.albedo, mi.ParamFlags.Differentiable)
-        callback.put_parameter('roughness', self.roughness, mi.ParamFlags.Differentiable)
-        callback.put_parameter('specular', self.specular, mi.ParamFlags.Differentiable)
+        callback.put_object('albedo', self.albedo, mi.ParamFlags.Differentiable)
+        callback.put_object('roughness', self.roughness, mi.ParamFlags.Differentiable )
+        callback.put_object('specular', self.specular, mi.ParamFlags.Differentiable)
