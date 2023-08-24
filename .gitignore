@@ -8,3 +8,4 @@ drjit/*
 mitsuba/*
 *.pyc
 ext/*
+chi2_data.py

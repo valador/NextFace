@@ -10,17 +10,17 @@ class RednerMat(mi.BSDF):
     def __init__(self, props: mi.Properties) -> None:
         super().__init__(props)
 
-        self.albedo: mi.Texture = props.get("albedo", mi.Texture.D65(0.1))
-        self.roughness: mi.Texture = props.get("roughness", mi.Texture.D65(0.1)) # TODO: Float?
-        self.specular: mi.Texture = props.get("specular", mi.Texture.D65(0.1)) # TODO: Float?
+        self.albedo = props.get("albedo", mi.Texture.D65(0.1))
+        self.roughness = props.get("roughness", mi.Texture.D65(0.1))
+        self.specular = props.get("specular", mi.Texture.D65(0.1))
     
     def roughness_to_phong(roughness: mi.Float) -> mi.Float:
-        return dr.max(2.0 / roughness - 2, 0)
+        return dr.maximum(2.0 / roughness - 2, 0)
     
     def smithG1(roughness: mi.Float, v: mi.Vector3f) -> mi.Float:
         cos_theta = v.z
         # tan^2 + 1 = 1/cos^2
-        tan_theta = dr.safe_sqrt(dr.max(1 / (cos_theta * cos_theta) - 1.0, 0))
+        tan_theta = dr.safe_sqrt(dr.maximum(1 / (cos_theta * cos_theta) - 1.0, 0))
         
         alpha = dr.sqrt(roughness)
         a = 1.0 / (alpha * tan_theta)
@@ -28,29 +28,30 @@ class RednerMat(mi.BSDF):
             a > 1.6, 1, 
             (3.535 * a + 2.181 * a * a) / (1.0 + 2.276 * a + 2.577 * a*a)
         )
-        result[tan_theta == 0] = 1
+       
+        result = dr.select(tan_theta == 0, 1, result)
         return result
     
     def warp_cosine(sample: mi.Point2f) -> mi.Vector3f:
-        phi = mi.math * 2 * sample.y
-        z = dr.sqrt(sample.x)
+        phi = math.pi * 2.0 * sample[1]
+        z = dr.sqrt(sample[0])
         theta = dr.acos(z)
         return mi.Vector3f(dr.sin(theta) * dr.cos(phi), dr.sin(theta) * dr.sin(phi), z)
     
     def eval(self, ctx: mi.BSDFContext, si: mi.SurfaceInteraction3f, wo: mi.Vector3f, active: bool = True) -> mi.Color3f:
         # Calcul contribution diffuse
-        diffuse_contrib = self.albedo(si, active) * wo.z / mi.Float(math.pi)
+        diffuse_contrib = self.albedo.eval(si, active) * dr.maximum(wo.z, 0.0) / mi.Float(math.pi)
         
         # Calcul contribution speculaire        
         m = dr.normalize(si.wi + wo)
-        roughness = dr.max(self.roughness.eval_1(si, active),0.00001)
-        phong_exponent = self.roughness_to_phong(roughness)
+        roughness = dr.maximum(self.roughness.eval_1(si, active),0.00001)
+        phong_exponent = RednerMat.roughness_to_phong(roughness)
         specular_reflectance = self.specular.eval(si, active)
         
-        D = dr.power(m.z, phong_exponent) * (phong_exponent + 2.0) / mi.Float(2 * math.pi)
-        G = self.smithG1(si.wi) * self.smithG1(wo)
-        F = specular_reflectance + (1 - specular_reflectance) * dr.power(dr.max(1 - dr.abs(dr.dot(m, wo)), 0), 5)
-        specular_contrib = dr.select(wo.z > 0, F * D * G / (4.0 * wo.z), 0)
+        D = dr.power(dr.maximum(m.z, 0.0), phong_exponent) * (phong_exponent + 2.0) / mi.Float(2.0 * math.pi)
+        G = RednerMat.smithG1(roughness, si.wi) * RednerMat.smithG1(roughness, wo)
+        F = specular_reflectance + (1 - specular_reflectance) * dr.power(dr.maximum(1 - dr.abs(dr.dot(m, wo)), 0), 5)
+        specular_contrib = dr.select(wo.z > 0, F * D * G / (4.0 * si.wi.z), 0)
         
         return specular_contrib + diffuse_contrib
         
@@ -64,14 +65,14 @@ class RednerMat(mi.BSDF):
         specular_pmf = dr.select(weight_pmf > 0.0, specular_pmf / weight_pmf, 0.0)
         
         # Compute diffuse PDF
-        diffuse_pdf = dr.select(diffuse_pmf > 0, diffuse_pmf * wo.z / math.pi, 0.0)
+        diffuse_pdf = dr.select(diffuse_pmf > 0, diffuse_pmf * dr.maximum(wo.z, 0.0) / math.pi, 0.0)
         
         # Compute specular PDF
         m = dr.normalize(si.wi + wo)
-        roughness = dr.max(self.roughness.eval_1(si, active),0.00001)
-        phong_exponent = self.roughness_to_phong(roughness)
+        roughness = dr.maximum(self.roughness.eval_1(si, active),0.00001)
+        phong_exponent = RednerMat.roughness_to_phong(roughness)
         D = dr.power(m.z, phong_exponent) * (phong_exponent + 2.0) / mi.Float(2 * math.pi)
-        specular_pdf = dr.select(dr.abs(m, wo) > 0,  specular_pmf * D * m.z / (4.0 * dr.abs(dr.dot(m, wo))), 0.0)
+        specular_pdf = dr.select(dr.abs(dr.dot(m, wo)) > 0,  specular_pmf * D * m.z / (4.0 * dr.abs(dr.dot(m, wo))), 0.0)
         
         return diffuse_pdf + specular_pdf
     
@@ -97,17 +98,18 @@ class RednerMat(mi.BSDF):
         bs: mi.BSDFSample3f = dr.zeros(mi.BSDFSample3f)
         bs.eta = 1
         bs.sampled_type = mi.BSDFFlags.GlossyReflection # Let's do not differentiate the two for the moment
+        bs.sampled_component = 0
         
         if dr.any(diffuse_mask):
-            bs.wo[diffuse_mask] = self.warp_cosine(sample2)
+            bs.wo[diffuse_mask] = RednerMat.warp_cosine(sample2)
         if dr.any(specular_mask):
-            roughness = dr.max(self.roughness.eval_1(si, active),0.00001)
-            phong_exponent = self.roughness_to_phong(roughness)
-            phi = 2 * math.pi * sample2.y
+            roughness = dr.maximum(self.roughness.eval_1(si, active),0.00001)
+            phong_exponent = RednerMat.roughness_to_phong(roughness)
+            phi = 2.0 * math.pi * sample2[1]
             sin_phi = dr.sin(phi)
-            cos_phi = dr.sin(phi)
-            cos_theta = dr.power(sample2.x, 1 / (phong_exponent + 2))
-            sin_theta = dr.safe_sqrt(1 - cos_theta * cos_theta)
+            cos_phi = dr.cos(phi)
+            cos_theta = dr.power(sample2[0], 1.0 / (phong_exponent + 2.0))
+            sin_theta = dr.safe_sqrt(1.0 - cos_theta * cos_theta)
             m = mi.Vector3f(sin_theta * cos_phi, sin_theta * sin_phi, cos_theta)
             bs.wo[specular_mask] = mi.reflect(si.wi, m)
         
@@ -115,6 +117,7 @@ class RednerMat(mi.BSDF):
         bs.pdf = self.pdf(ctx, si, bs.wo, active)
         active &= bs.pdf > 0.0
         result = self.eval(ctx, si, bs.wo, active)
+        print(bs)
         
         return (bs, result / bs.pdf & active)
     
