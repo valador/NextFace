@@ -304,7 +304,8 @@ class Optimizer:
             optimizer.step()
             losses.append(loss.item())
             if self.verbose:
-                print(iter, '=>', loss.item())
+                with open(self.outputDir+'loss_step1.txt', 'a') as file:
+                    print(iter, '=>', loss.item(),file =file)
             if self.config.debugFrequency > 0 and iter % self.config.debugFrequency == 0:
                     # save obj
                     cameraNormals = self.pipeline.morphableModel.computeNormals(cameraVertices) # only used of obj (might be too slow)
@@ -367,8 +368,8 @@ class Optimizer:
                 print(iter, '. photo Loss:', loss,
                       '. landmarks Loss: ', landmarksLoss.item(),
                       '. regLoss: ', regLoss.item())
-                print(f"Iteration {iter:03d}: Loss {self.rendererName} = {losses[0]:6f}", end='\r')
-
+                with open(self.outputDir+'loss_step2.txt', 'a') as file:
+                    print(f"Iteration {iter:03d}: Loss {self.rendererName} = {losses[0]:6f}", end='\r',file=file)
             if self.config.debugFrequency > 0 and iter % self.config.debugFrequency == 0:
                 self.debugFrame(images[..., 0:3], inputTensor, diff, diffuseTextures, specularTextures, roughTextures, self.debugDir + '/results/'+self.rendererName+'_step2_' + str(iter))
                 # generate one with mitsuba for reference
@@ -450,7 +451,8 @@ class Optimizer:
             loss.backward()
             optimizer.step()
             if self.verbose:
-                print(iter, ' => Loss:', loss.item())
+                with open(self.outputDir+'loss_step3.txt', 'a') as file:
+                    print(iter, ' => Loss:', loss.item(),file=file)
 
             if self.config.debugFrequency > 0 and iter % self.config.debugFrequency == 0:
                 self.debugFrame(rgba_img[..., 0:3], inputTensor, diff, vDiffTextures, vSpecTextures, vRoughTextures, self.debugDir + '/results/'+self.rendererName+'_step3_' + str(iter))
@@ -636,6 +638,8 @@ if __name__ == "__main__":
             config.lamdmarksDetectorType = 'fan'
 
     optimizer = Optimizer(outputDir, config)
+    # TODO handle the use case of mitsuba batching
+    
     optimizer.run(inputDir,
                   sharedIdentity= sharedIdentity,
                   checkpoint= checkpoint,
