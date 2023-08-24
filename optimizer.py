@@ -565,7 +565,7 @@ class Optimizer:
         
         if self.rendererName == 'mitsuba' and self.framesNumber > 1 :
             print("batch rendering is not implemented on Mitsuba")
-            exit(0)
+            sys.exit()
         
         if checkpoint is not None and checkpoint != '':
             print('resuming optimization from checkpoint: ',checkpoint, file=sys.stderr, flush=True)
@@ -584,8 +584,14 @@ class Optimizer:
         if doStep3:
             self.runStep3()
         end = time.time()
-        print("took {:.2f} minutes to optimize".format((end - start) / 60.), file=sys.stderr, flush=True)
+        timeMsg = "took {:.2f} minutes to optimize".format((end - start) / 60.)
+        print(timeMsg, file=sys.stderr, flush=True)
+        if self.config.saveTime :
+            with open(self.outputDir+'timeTaken.txt', 'a') as file:
+                print(timeMsg, file=file)
         self.saveOutput(self.outputDir)
+        #remove cache ?
+        torch.cuda.empty_cache()
 
 if __name__ == "__main__":
 

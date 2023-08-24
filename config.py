@@ -52,6 +52,7 @@ class Config:
 
 		self.debugFrequency = 10 #display frequency during optimization
 		self.saveIntermediateStage = False #if True the output of stage 1 and 2 are saved. stage 3 is always saved which is the output of the optim
+		self.saveTime = False # if True will save the time taken in the txt
 		self.verbose = False #display loss on terminal if true
 
 		self.rtSamples = 500 #the number of ray tracer samples to render the final output
