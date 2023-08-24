@@ -1,15 +1,12 @@
 import math
 from renderers.renderer import *
-from renderers.rendererRedner import RendererRedner
-from renderers.rendererMitsuba import RendererMitsuba
-from renderers.rendererVertexBased import RendererVertexBased
 from sphericalharmonics import SphericalHarmonics
 from morphablemodel import MorphableModel
 from renderers import *
 from camera import Camera
 from customRenderer import *
 from utils import *
-import polyscope as ps
+
 class Pipeline:
 
     def __init__(self,  config, rendererName = ''):
@@ -168,10 +165,13 @@ class Pipeline:
         
     def createRenderer(self, rendererName):
         if rendererName == 'redner':
+            from renderers.rendererRedner import RendererRedner
             return RendererRedner(self.config.rtTrainingSamples, self.config.bounces, self.device, self.config.maxResolution, self.config.maxResolution)
         elif rendererName == 'mitsuba':
+            from renderers.rendererMitsuba import RendererMitsuba
             return RendererMitsuba(self.config.rtTrainingSamples, self.config.bounces, self.device, self.config.maxResolution, self.config.maxResolution) 
         elif rendererName == 'vertex':
+            from renderers.rendererVertexBased import RendererVertexBased
             return RendererVertexBased(self.device, self.config.maxResolution, self.config.maxResolution) 
         else :
             # check config file as last resort
