@@ -18,6 +18,7 @@ class RendererMitsuba(Renderer):
         self.screenHeight = screenHeight
         mi.set_variant('cuda_ad_rgb')
         mi.LogLevel(1)
+        dr.set_log_level(dr.LogLevel.Info)
         dr.set_device(0)
         self.scene = self.buildInitialScene() # init my scene
         

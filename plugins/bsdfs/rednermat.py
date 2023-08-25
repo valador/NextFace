@@ -64,7 +64,7 @@ class RednerMat(mi.BSDF):
         F = specular_reflectance + (1 - specular_reflectance) * dr.power(dr.maximum(1 - dr.abs(dr.dot(m, wo)), 0), 5)
         specular_contrib = dr.select(wo.z > 0, F * D * G / (4.0 * si.wi.z), 0)
         print('eval end')
-        return specular_contrib + diffuse_contrib
+        return specular_contrib + diffuse_contrib # [[x,y,z]]
         
     
     def pdf(self, ctx: mi.BSDFContext, si: mi.SurfaceInteraction3f, wo: mi.Vector3f, active: bool = True) -> float:
@@ -90,7 +90,7 @@ class RednerMat(mi.BSDF):
         specular_pdf = dr.select(dr.abs(dr.dot(m, wo)) > 0,  specular_pmf * D * dr.maximum(m.z, 0.0) / (4.0 * dr.abs(dr.dot(m, wo))), 0.0)
         res = dr.select(wo.z > 0, diffuse_pdf + specular_pdf, 0)
         print('pdf end')
-        return res
+        return res # [float]
     
     def eval_pdf(self, ctx: mi.BSDFContext, si: mi.SurfaceInteraction3f, wo: mi.Vector3f, active: bool = True) -> Tuple[mi.Color3f, float]:
         # TODO: Could be more efficient by fusing some computations
@@ -126,10 +126,12 @@ class RednerMat(mi.BSDF):
         # bs.sampled_type = mi.BSDFFlags.GlossyReflection # Let's do not differentiate the two for the moment
         bs.sampled_component = 0
         print('if conditions')
-        print( active)
+        print(sample1) # 0.5
+        print(diffuse_pmf) # [0.5]
         print('dr any')
         if dr.any(diffuse_mask): 
             print('diffuse mask')
+            print(RednerMat.warp_cosine(sample2))
             bs.wo[diffuse_mask] = RednerMat.warp_cosine(sample2)
         if dr.any(specular_mask):
             print('specular mask')
