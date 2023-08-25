@@ -369,7 +369,7 @@ class Optimizer:
                       '. landmarks Loss: ', landmarksLoss.item(),
                       '. regLoss: ', regLoss.item())
                 with open(self.outputDir+'loss_step2.txt', 'a') as file:
-                    print(f"Iteration {iter:03d}: Loss {self.rendererName} = {losses[0]:6f}", end='\r',file=file)
+                    print(f"Iteration {iter:03d}: Loss {self.rendererName} = {loss.item():6f}", end='\r',file=file)
             if self.config.debugFrequency > 0 and iter % self.config.debugFrequency == 0:
                 self.debugFrame(images[..., 0:3], inputTensor, diff, diffuseTextures, specularTextures, roughTextures, self.debugDir + '/results/'+self.rendererName+'_step2_' + str(iter))
                 # generate one with mitsuba for reference
@@ -636,10 +636,8 @@ if __name__ == "__main__":
         except:
             print('[WARN] Mediapipe for landmarks detection not availble. falling back to FAN landmarks detector. You may want to try Mediapipe because it is much accurate than FAN (pip install mediapipe)')
             config.lamdmarksDetectorType = 'fan'
-
     optimizer = Optimizer(outputDir, config)
-    # TODO handle the use case of mitsuba batching
-    
+
     optimizer.run(inputDir,
                   sharedIdentity= sharedIdentity,
                   checkpoint= checkpoint,

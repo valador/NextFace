@@ -12,9 +12,9 @@ config.fillFromDicFile('./optimConfig.ini')
 config.path = './baselMorphableModel/' # Verify your path
 
 # Directory path containing all images
-imageFolderPath = './input/test/'
+imageFolderPath = './input/test/s1.png'
 
-outputDir = './output/test/all_images'
+outputDir = './output/test/all_images/s1_mitsuba_mat'
 #setup
 # Extract the folder name 
 folder_name = os.path.basename(imageFolderPath.strip('/'))
@@ -34,6 +34,6 @@ optimizer = Optimizer(outputDir, config)
 # optimizer.run(outputImageDir+'/debug/results/ref.png', checkpoint=outputImageDir+'/checkpoints/stage1_output.pickle', doStep1=False, doStep2=True, doStep3=False, renderer="mitsuba")
 # optimizer.run(imagePath, doStep1=True, doStep2=True, doStep3=True, rendererName="redner")
 # optimizer.run(imagePath, doStep1=True, doStep2=True, doStep3=True, rendererName="mitsuba")
-optimizer.run(imageFolderPath, doStep1=False, doStep2=True, doStep3=True, rendererName="mitsuba")
+optimizer.run(imageFolderPath, doStep1=False, doStep2=True, doStep3=False, rendererName="mitsuba")
 # optimizer.run(imagePath, checkpoint=outputImageDir+'/checkpoints/stage2_output.pickle',doStep1=False, doStep2=False, doStep3=True, renderer="mitsuba")
 # optimizer.run(imagePath, doStep1=True, doStep2=True, doStep3=False, renderer="redner")

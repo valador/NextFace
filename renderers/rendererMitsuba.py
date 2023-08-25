@@ -76,6 +76,18 @@ class RendererMitsuba(Renderer):
                         
                     }
                 }
+                # 'bsdf': {
+                #     'type': 'principled',
+                #     'base_color': {
+                #         'type': 'bitmap',
+                #         'filename': "./output/mitsuba_default/diffuseMap_0.png"
+                #     },                
+                #     'roughness':{
+                #         'type': 'bitmap',
+                #         'filename': "./output/mitsuba_default/roughnessMap_0.png"
+                        
+                #     },
+                # }
             },
             'light': {
                 'type': 'envmap',
