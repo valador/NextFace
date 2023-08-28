@@ -39,7 +39,7 @@ class Pipeline:
         self.faces32 = self.morphableModel.faces.to(torch.int32).contiguous()
         self.shBands = config.bands
         self.sharedIdentity = False
-
+        
     def initSceneParameters(self, n, sharedIdentity = False):
         '''
         init pipeline parameters (face shape, albedo, exp coeffs, light and  head pose (camera))
@@ -71,7 +71,7 @@ class Pipeline:
 
         texRes = self.morphableModel.getTextureResolution()
         self.vRoughness = 0.4 * torch.ones([nShape, texRes, texRes, 1], dtype=torch.float32, device=self.device)
-
+        print('vROugh defined')
     def computeShape(self):
         '''
         compute shape vertices from the shape and expression coefficients

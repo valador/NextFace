@@ -45,6 +45,8 @@ class Optimizer:
         self.vEnhancedDiffuse = None
         self.vEnhancedSpecular = None
         self.vEnhancedRoughness = None
+        self.rendererName = config.rendererName
+        self.pipeline.reloadRenderer(self.rendererName)
 
     def saveParameters(self, outputFileName):
 
