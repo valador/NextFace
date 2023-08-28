@@ -60,26 +60,9 @@ class RendererMitsuba(Renderer):
                 "type": "obj",
                 "filename": "./output/mitsuba_default/mesh0.obj",
                 "face_normals": True,
-                'bsdf': {
-                    'type': 'rednermat',
-                    'albedo': {
-                        'type': 'bitmap',
-                        'filename': "./output/mitsuba_default/diffuseMap_0.png"
-                    },                
-                    'roughness':{
-                        'type': 'bitmap',
-                        'filename': "./output/mitsuba_default/roughnessMap_0.png"
-                        
-                    },
-                    'specular':{
-                        'type': 'bitmap',
-                        'filename': "./output/mitsuba_default/specularMap_0.png"
-                        
-                    }
-                }
                 # 'bsdf': {
-                #     'type': 'principled',
-                #     'base_color': {
+                #     'type': 'rednermat',
+                #     'albedo': {
                 #         'type': 'bitmap',
                 #         'filename': "./output/mitsuba_default/diffuseMap_0.png"
                 #     },                
@@ -88,7 +71,24 @@ class RendererMitsuba(Renderer):
                 #         'filename': "./output/mitsuba_default/roughnessMap_0.png"
                         
                 #     },
+                #     'specular':{
+                #         'type': 'bitmap',
+                #         'filename': "./output/mitsuba_default/specularMap_0.png"
+                        
+                #     }
                 # }
+                'bsdf': {
+                    'type': 'principled',
+                    'base_color': {
+                        'type': 'bitmap',
+                        'filename': "./output/mitsuba_default/diffuseMap_0.png"
+                    },                
+                    'roughness':{
+                        'type': 'bitmap',
+                        'filename': "./output/mitsuba_default/roughnessMap_0.png"
+                        
+                    },
+                }
             },
             'light': {
                 'type': 'envmap',
@@ -117,10 +117,12 @@ class RendererMitsuba(Renderer):
         params["mesh.vertex_texcoords"] = dr.ravel(mi.TensorXf(uv))
         # update BSDF
         # https://mitsuba.readthedocs.io/en/stable/src/generated/plugins_bsdfs.html#smooth-diffuse-material-diffuse
-        params["mesh.bsdf.albedo.data"] = mi.TensorXf(diffuseTexture)
-        params["mesh.bsdf.specular.data"] = mi.TensorXf(specularTexture) # principled doesnt support specular textures
+        # params["mesh.bsdf.albedo.data"] = mi.TensorXf(diffuseTexture)
+        # params["mesh.bsdf.specular.data"] = mi.TensorXf(specularTexture) 
+        # params["mesh.bsdf.roughness.data"] = mi.TensorXf(roughnessTexture)
+        params["mesh.bsdf.base_color.data"] = mi.TensorXf(diffuseTexture)
+        # params["mesh.bsdf.specular.data"] = mi.TensorXf(specularTexture) # principled doesnt support specular textures
         params["mesh.bsdf.roughness.data"] = mi.TensorXf(roughnessTexture)
-        
         #update envMaps
         params["light.data"] = mi.TensorXf(envMap)
         
@@ -130,7 +132,7 @@ class RendererMitsuba(Renderer):
         
     # overloading this method
     
-    def render(self, cameraVertices, indices, normals, uv, diffAlbedo, diffuseTexture, specularTexture, roughnessTexture, shCoeffs, sphericalHarmonics, focals, renderAlbedo=False, lightingOnly=False, interpolation=False):
+    def render(self, cameraVertices, indices, normals, uv, diffAlbedo, diffuseTexture, specularTexture, roughnessTexture, shCoeffs, sphericalHarmonics, focals, sensors, renderAlbedo=False, lightingOnly=False, interpolation=False):
         """
         middle function between pytorch and mitsuba, we take the tensor values from our pipeline and give it to our standalone wrapper
 
@@ -151,7 +153,8 @@ class RendererMitsuba(Renderer):
         envMap = sphericalHarmonics.toEnvMap(shCoeffs)
         assert(envMap.dim() == 4 and envMap.shape[-1] == 3)
         assert(cameraVertices.shape[0] == envMap.shape[0])
-
+        # assert that our scene has the same amount of sensors as the amount of images
+        
         self.fov =  torch.tensor([360.0 * torch.atan(self.screenWidth / (2.0 * focals)) / torch.pi]) # from renderer.py
         
         img =  RendererMitsuba.render_torch_djit(self.scene, cameraVertices.squeeze(0), indices.to(torch.float32), normals.squeeze(0), uv, diffuseTexture.squeeze(0), specularTexture.squeeze(0), roughnessTexture.squeeze(0), self.fov.item(), envMap.squeeze(0),self.samples) # returns a pytorch
