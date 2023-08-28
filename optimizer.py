@@ -238,9 +238,10 @@ class Optimizer:
             pad_width = res.shape[1] - ref.shape[1]
             padding = np.zeros((ref.shape[0], pad_width, ref.shape[2]), dtype=np.float32)
             ref = cv2.hconcat([ref, padding])
-            
-        debugFrame = cv2.vconcat([np.power(np.clip(res, 0.0, 1.0), 1.0 / 2.2) * 255, ref * 255])
-        
+        res = np.power(np.clip(res, 0.0, 1.0), 1.0 / 2.2) * 255
+        ref = np.power(np.clip(ref, 0.0, 1.0), 1.0 / 2.2) * 255
+        debugFrame = cv2.vconcat([res, ref])
+
         # Save the image
         cv2.imwrite(outputPrefix + '.png', debugFrame)
     def debugTensor(self, debugTensor):
@@ -338,7 +339,7 @@ class Optimizer:
                 optimizer.add_param_group({'params': self.pipeline.vExpCoeff, 'lr': 0.01})
                 optimizer.add_param_group({'params': self.pipeline.vRotation, 'lr': 0.0001})
                 optimizer.add_param_group({'params': self.pipeline.vTranslation, 'lr': 0.0001})
-
+            
             optimizer.zero_grad()
             vertices, diffAlbedo, specAlbedo = self.pipeline.morphableModel.computeShapeAlbedo(self.pipeline.vShapeCoeff, self.pipeline.vExpCoeff, self.pipeline.vAlbedoCoeff)
             cameraVerts = self.pipeline.camera.transformVertices(vertices, self.pipeline.vTranslation, self.pipeline.vRotation)
