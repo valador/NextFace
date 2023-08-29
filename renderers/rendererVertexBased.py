@@ -54,8 +54,6 @@ class RendererVertexBased(Renderer):
         Returns:
             _type_: _description_
         """
-        print('verticesColor shape')
-        print(verticesColor.shape)
         B = cameraVertices.shape[0]  # Batch size
         # if verticesColor.shape[0] != B :
         #     verticesColor = verticesColor.repeat(B,1,1)
@@ -89,8 +87,6 @@ class RendererVertexBased(Renderer):
 
             verticesColor_single = verticesColor[texIndex: texIndex+1].squeeze(0)
             mask = mask.squeeze(0)
-            print(mask.shape)
-            print(verticesColor_single.shape)
             colors_in_screen_space = verticesColor_single[mask]
 
             # Interpolation if needed

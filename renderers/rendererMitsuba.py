@@ -12,6 +12,7 @@ class RendererMitsuba(Renderer):
     def __init__(self, samples, bounces, device, screenWidth, screenHeight):
         self.samples = samples
         self.bounces = bounces
+        assert(device == 'cuda') # 'we only support GPU computation on mitsuba'
         self.device = torch.device(device)
         self.counter = 0
         self.screenWidth = screenWidth
