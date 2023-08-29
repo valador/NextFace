@@ -51,6 +51,7 @@ class Config:
 		self.weightRoughnessSmoothnessReg = 0.002  # smoothness regularizer weight for roughness texture (at step 3)
 
 		self.debugFrequency = 10 #display frequency during optimization
+		self.debugOutput = False # generate outputs at each debugFrequency 
 		self.saveIntermediateStage = False #if True the output of stage 1 and 2 are saved. stage 3 is always saved which is the output of the optim
 		self.saveTime = False # if True will save the time taken in the txt
 		self.verbose = False #display loss on terminal if true
@@ -59,7 +60,7 @@ class Config:
 		self.rtTrainingSamples = 8  # number of ray tracing to use during training
 		self.bounces = 2 # number of bounces
 		self.smoothing = True #should we smooth the face when doing diff
-		self.rendererName = 'redner'
+		self.rendererName = 'redner' #default renderer name
 	def fillFromDicFile(self, filePath):
 		'''
 		overwrite default config

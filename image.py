@@ -15,9 +15,6 @@ def saveImage(image, fileName, gamma = 2.2):
     :param gamma: gamma correction
     :return:
     '''
-
-    # import pyredner
-    # pyredner.imwrite(image.cpu().detach(), fileName, gamma = gamma)
     print(f"{fileName} = {image.shape}1")
     if ".exr" in fileName:
         print(f"IGNORE SAVING: {fileName}")

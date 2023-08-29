@@ -8,4 +8,6 @@ drjit/*
 mitsuba/*
 *.pyc
 ext/*
+scenes/*
+mitsuba notebooks/*
 chi2_data.py

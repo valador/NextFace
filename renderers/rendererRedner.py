@@ -90,39 +90,42 @@ class RendererRedner(Renderer):
 
         return cam
 
-    def buildScenes(self, vertices, indices, normals, uv, diffuse, specular, roughness, focal, envMaps):
+    def buildScenes(self, vertices, indices, normals, uv, diffuseTexture, specularTexture, roughnessTexture, focal, envMaps):
         '''
         build multiple pyredner scenes used for path tracing (uv mapping and indices are the same for all scenes)
-        :param vertices: [n, verticesNumber, 3]
-        :param indices: [indicesNumber, 3]
-        :param normals: [n, verticesNumber, 3]
-        :param uv: [verticesNumber, 2]
-        :param diffuse: [n, resX, resY, 3] or [1, resX, resY, 3]
-        :param specular: [n, resX, resY, 3] or [1, resX, resY, 3]
-        :param roughness: [n, resX, resY, 1] or [1, resX, resY, 3]
-        :param focal: [n]
-        :param envMaps: [n, resX, resY, 3]
-        :return: return list of pyredner scenes
+        Args:
+            vertices (B, N, 3): vertices tensor
+            indices (indices number,3): indices of the morphable model
+            normals (B, N, 3): normals of our vertices
+            uv (N, 3): uv map
+            diffuseTexture (B, resX, resY, 3) or (1, resX, resY, 3): diffuse textures for all our images
+            specularTexture (B, resX, resY, 3) or (1, resX, resY, 3): specular textures for all our images
+            roughnessTexture (B, resX, resY, 3) or (1, resX, resY, 3): roughness textures for all our images
+            focal [B]: focals for our scenes
+            envMaps (B, resX, resY, 3) : envMap textures for all our images
+
+        Returns:
+            images [B, resX, resY, 4]: the renders based on our inputs
         '''
         assert(vertices.dim() == 3 and vertices.shape[-1] == 3 and normals.dim() == 3 and normals.shape[-1] == 3)
         assert (indices.dim() == 2 and indices.shape[-1] == 3)
         assert (uv.dim() == 2 and uv.shape[-1] == 2)
-        assert (diffuse.dim() == 4 and diffuse.shape[-1] == 3 and
-                specular.dim() == 4 and specular.shape[-1] == 3 and
-                roughness.dim() == 4 and roughness.shape[-1] == 1)
+        assert (diffuseTexture.dim() == 4 and diffuseTexture.shape[-1] == 3 and
+                specularTexture.dim() == 4 and specularTexture.shape[-1] == 3 and
+                roughnessTexture.dim() == 4 and roughnessTexture.shape[-1] == 1)
         assert(focal.dim() == 1)
         assert(envMaps.dim() == 4 and envMaps.shape[-1] == 3)
         assert(vertices.shape[0] == focal.shape[0] == envMaps.shape[0])
-        assert(diffuse.shape[0] == specular.shape[0] == roughness.shape[0])
-        assert (diffuse.shape[0] == 1 or diffuse.shape[0] == vertices.shape[0])
-        sharedTexture = True if diffuse.shape[0] == 1 else False
+        assert(diffuseTexture.shape[0] == specularTexture.shape[0] == roughnessTexture.shape[0])
+        assert (diffuseTexture.shape[0] == 1 or diffuseTexture.shape[0] == vertices.shape[0])
+        sharedTexture = True if diffuseTexture.shape[0] == 1 else False
 
         scenes = []
         for i in range(vertices.shape[0]):
             texIndex = 0 if sharedTexture else i
-            mat = pyredner.Material(pyredner.Texture(diffuse[texIndex]),
-                                    pyredner.Texture(specular[texIndex]) if specular is not None else None,
-                                    pyredner.Texture(roughness[texIndex]) if roughness is not None else None)
+            mat = pyredner.Material(pyredner.Texture(diffuseTexture[texIndex]),
+                                    pyredner.Texture(specularTexture[texIndex]) if specularTexture is not None else None,
+                                    pyredner.Texture(roughnessTexture[texIndex]) if roughnessTexture is not None else None)
             obj = pyredner.Object(vertices[i], indices, mat, uvs=uv, normals=normals[i] if normals is not None else None)
             cam =  self.setupCamera(focal[i], self.screenWidth, self.screenHeight)
             scene = pyredner.Scene(cam, materials=[mat], objects=[obj], envmap=pyredner.EnvironmentMap(envMaps[i]))
@@ -131,11 +134,13 @@ class RendererRedner(Renderer):
         return scenes
 
     def renderImageAlbedo(self, scenes):
-        '''
-        render albedo of given pyredner scenes
-        :param scenes:  list of pyredner scenes
-        :return: albedo images [n, screenWidth, screenHeight, 4]
-        '''
+        """
+        render scenes with ray tracing (only albedo)
+        Args:
+            scenes:  list of pyredner scenes
+        Returns:
+            images [B, resX, resY, 4]: albedo images
+        """
         #images =pyredner.render_albedo(scenes, alpha = True, num_samples = self.samples, device = self.device)
         images = renderPathTracing(scenes,
                                    channels= [pyredner.channels.diffuse_reflectance, pyredner.channels.alpha],
@@ -144,11 +149,13 @@ class RendererRedner(Renderer):
                                    device = self.device)
         return images
     def renderImage(self, scenes):
-        '''
-        render scenes with ray tracing
-        :param scenes:  list of pyredner scenes
-        :return: ray traced images [n, screenWidth, screenHeight, 4]
-        '''
+        """
+        render scenes with ray tracing (only albedo)
+        Args:
+            scenes:  list of pyredner scenes
+        Returns:
+            images [B, resX, resY, 4]: images
+        """
         images = renderPathTracing(scenes,
                                    max_bounces = self.bounces,
                                    num_samples = self.samples ,
@@ -157,16 +164,27 @@ class RendererRedner(Renderer):
         return images
     
     def render(self, cameraVertices, indices, normals, uv, diffAlbedo, diffuseTexture, specularTexture, roughnessTexture, shCoeffs, sphericalHarmonics, focals, renderAlbedo=False, lightingOnly=False, interpolation=False):
-        '''
-        ray trace an image given camera vertices and corresponding textures
-        :param cameraVerts: camera vertices tensor [n, verticesNumber, 3]
-        :param diffuseTextures: diffuse textures tensor [n, texRes, texRes, 3]
-        :param specularTextures: specular textures tensor [n, texRes, texRes, 3]
-        :param roughnessTextures: roughness textures tensor [n, texRes, texRes, 1]
-        :param renderAlbedo: if True render albedo else ray trace image
-        :param vertexBased: if True we render by vertex instead of ray tracing
-        :return: ray traced images [n, resX, resY, 4]
-        '''
+        """
+        Render images with redner based on inputs
+
+        Args:
+            vertices (B, N, 3): vertices tensor
+            indices (indices number,3): indices of the morphable model
+            normals (B, N, 3): normals of our vertices
+            uv (N, 3): uv map
+            diffAlbedo (B, N, 3) : diffuse albedo from coefficients
+            diffuseTexture (B, resX, resY, 3) or (1, resX, resY, 3): diffuse textures for all our images
+            specularTexture (B, resX, resY, 3) or (1, resX, resY, 3): specular textures for all our images
+            roughnessTexture (B, resX, resY, 3) or (1, resX, resY, 3): roughness textures for all our images
+            shCoeffs (B, sh order ^2,3) : sh coefficients
+            sphericalHarmonics : SH class object that helps us to do envMap conversions
+            focals (B): focals for our scenes
+            renderAlbedo bool : render only with albedo
+            lightingOnly bool : render only the lighting impact
+            interpolation bool : should we do interpolation 
+        Returns:
+            images (B, resX, resY, 4): the renders based on our inputs
+        """
         envMaps = sphericalHarmonics.toEnvMap(shCoeffs)
         assert(envMaps.dim() == 4 and envMaps.shape[-1] == 3)
         assert(cameraVertices.shape[0] == envMaps.shape[0])

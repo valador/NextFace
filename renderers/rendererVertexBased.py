@@ -15,14 +15,17 @@ class RendererVertexBased(Renderer):
     # Generate colors for each vertices
     def computeVertexColor(self, diffAlbedo, shCoeffs, shBasisFunctions, renderAlbedo=False, lightingOnly=False):
         """
+        Compute the color for each vertex
+        Args:
+            diffAlbedo (B, N, 3) : diffuse albedo from coefficients
+            shCoeffs (B, sh order^2,3) : sh coefficients
+            shBasisFunctions (B, N, sh order ^2 ): formulas needed for sh calculation
+            renderAlbedo bool : should we only render with albedo
+            lightingOnly bool : should we only render with lighting
         Return:
             face_color       -- torch.tensor, size (B, N, 3), range (0, 1.)
-
-        Parameters:
-            diffAlbedo     -- torch.tensor, size (B, N, 3) 
-            normals        -- torch.tensor, size (B, N, 3), rotated face normal
-            Y              -- torch.tensor, size (B, N, 81), sh basis functions, should be (order +1 )^2
         """
+
         if renderAlbedo :
             return diffAlbedo
         
@@ -45,14 +48,14 @@ class RendererVertexBased(Renderer):
         """generate multiple vertex based images
 
         Args:
-            cameraVertices (tensor [B, N, 3]): _description_
-            verticesColor (tensor [B, N, 3]): _description_
-            normals (tensor [B, N, 3]): _description_
-            focals (tensor [B]): _description_
-            interpolation (bool, optional): _description_. Defaults to False.
+            cameraVertices (tensor [B, N, 3]): camera vertices
+            verticesColor (tensor [B, N, 3]): color for each vertex
+            normals (tensor [B, N, 3]): normal for each vertex
+            focals (tensor [B]): focals for each batch
+            interpolation (bool, optional): should we apply interpolation between all vertices. Defaults to False.
 
         Returns:
-            _type_: _description_
+            image [B, resX, resY, 4]: vertex based images
         """
         B = cameraVertices.shape[0]  # Batch size
         width = self.screenWidth
@@ -129,13 +132,13 @@ class RendererVertexBased(Renderer):
         return images_data
     
     def perspectiveProjMatrix(self, fov, aspect_ratio):
-        """
-        Create a perspective projection matrix.
-        
-        :param fov: field of view angle in the y direction (in degrees).
-        :param aspect_ratio: aspect ratio of the viewport (width/height).
-        :param near: distance to the near clipping plane.
-        :param far: distance to the far clipping plane.
+        """ Create a perspective projection matrix.
+        Args : 
+            fov float : field of view angle in the y direction (in degrees).
+            aspect_ratio float : aspect ratio of the viewport (width/height).
+
+        Returns:
+            4x4 float matrix: perspective projection matrix
         """
         f = 1.0 / torch.tan(torch.deg2rad(fov) / 2.0)
         # right handed matrix
@@ -176,20 +179,26 @@ class RendererVertexBased(Renderer):
         return projMatrix
     # overloading this method
     def render(self, cameraVertices, indices, normals, uv, diffAlbedo, diffuseTexture, specularTexture, roughnessTexture, shCoeffs, sphericalHarmonics, focals, renderAlbedo=False, lightingOnly=False, interpolation=False ):
-        """take inputs, generate color for each vertex and project them on the screen
+        """
+        Take inputs, generate color for each vertex and project them on the screen
 
         Args:
-            cameraVertices (_type_): _description_
-            diffAlbedo (_type_): _description_
-            shCoeffs (_type_): _description_
-            shBasisFunctions (_type_): _description_
-            focals (_type_): _description_
-            renderAlbedo (bool, optional): _description_. Defaults to False.
-            lightingOnly (bool, optional): _description_. Defaults to False.
-            interpolation (bool, optional): _description_. Defaults to False.
-
+            vertices (B, N, 3): vertices tensor
+            indices (indices number,3): indices of the morphable model
+            normals (B, N, 3): normals of our vertices
+            uv (N, 3): uv map
+            diffAlbedo (B, N, 3) : diffuse albedo from coefficients
+            diffuseTexture (B, resX, resY, 3) or (1, resX, resY, 3): diffuse textures for all our images
+            specularTexture (B, resX, resY, 3) or (1, resX, resY, 3): specular textures for all our images
+            roughnessTexture (B, resX, resY, 3) or (1, resX, resY, 3): roughness textures for all our images
+            shCoeffs (B, sh order ^2,3) : sh coefficients
+            sphericalHarmonics : SH class object that helps us to do envMap conversions
+            focals (B): focals for our scenes
+            renderAlbedo bool : render only with albedo
+            lightingOnly bool : render only the lighting impact
+            interpolation bool : should we do interpolation 
         Returns:
-            _type_: _description_
+            images (B, resX, resY, 4): the renders based on our inputs
         """
         shBasisFunctions = sphericalHarmonics.preComputeSHBasisFunction(normals, sh_order=8)
 

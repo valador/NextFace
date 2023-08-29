@@ -17,14 +17,13 @@ class RendererMitsuba(Renderer):
         self.counter = 0
         self.screenWidth = screenWidth
         self.screenHeight = screenHeight
-        mi.set_variant('cuda_ad_rgb')
         dr.set_device(0)
         self.scene = self.buildInitialScene() # init my scene
         
     def buildInitialScene(self):
         """
         generate a placeholder scene where we assign default values that will be updated at runtime
-        ** make sure the mitsuba_default folder is properly placed in the output folder
+        ** make sure the mitsuba_default folder ** is properly placed in the output folder
         Returns:
             scene (python dictionnary): mitsuba scene object
         """
@@ -98,21 +97,33 @@ class RendererMitsuba(Renderer):
     
     # STANDALONE because of wrap_ad
     @dr.wrap_ad(source='torch', target='drjit')
-    def render_torch_djit(scene, vertices, indices, normal, uv, diffuseTexture, specularTexture, roughnessTexture, fov, envMap, spp=8, seed=1):
+    def render_torch_djit(scene, vertices, indices, normals, uv, diffuseTexture, specularTexture, roughnessTexture, fov, envMaps, spp=8, seed=1):
         """
         Standalone function that converts torch computations in mitsuba's drjit computations.
         This wrapper handles the propagation of the gradients directly. 
         We also update the values of our mitsuba scene with the values passed as inputs
-
+        Args : 
+            scene : Mitsuba scene object
+            vertices (B, N, 3): vertices tensor
+            indices (indices number,3): indices of the morphable model
+            normals (B, N, 3): normals of our vertices
+            uv (N, 3): uv map
+            diffuseTexture (B, resX, resY, 3) or (1, resX, resY, 3): diffuse textures for all our images
+            specularTexture (B, resX, resY, 3) or (1, resX, resY, 3): specular textures for all our images
+            roughnessTexture (B, resX, resY, 3) or (1, resX, resY, 3): roughness textures for all our images
+            fov (B) : field of view
+            envMaps (B, resX, resY, 3) : environment map for the scene based on the shCoeffs
+            spp int : number of samples
+            seed int : seed number
         Returns:
-           image : tensorX
+           image [B, resX, resY, 9]: image with 9 channels (3 rgb + 5 depth)
         """
         params = mi.traverse(scene)
         params["sensor.x_fov"] = fov
         # update mesh params
         params["mesh.vertex_positions"] = dr.ravel(mi.TensorXf(vertices))
         params["mesh.faces"] = dr.ravel(mi.TensorXf(indices))
-        params["mesh.vertex_normals"] = dr.ravel(mi.TensorXf(normal))
+        params["mesh.vertex_normals"] = dr.ravel(mi.TensorXf(normals))
         params["mesh.vertex_texcoords"] = dr.ravel(mi.TensorXf(uv))
         # update BSDF
         # https://mitsuba.readthedocs.io/en/stable/src/generated/plugins_bsdfs.html#smooth-diffuse-material-diffuse
@@ -122,7 +133,7 @@ class RendererMitsuba(Renderer):
         params["mesh.bsdf.base_color.data"] = mi.TensorXf(diffuseTexture)
         params["mesh.bsdf.roughness.data"] = mi.TensorXf(roughnessTexture)
         #update envMaps
-        params["light.data"] = mi.TensorXf(envMap)
+        params["light.data"] = mi.TensorXf(envMaps)
         
         params.update() 
         img = mi.render(scene, params, spp=spp, seed=seed, seed_grad=seed+1)
@@ -130,28 +141,32 @@ class RendererMitsuba(Renderer):
         
     # overloading this method
     
-    def render(self, cameraVertices, indices, normals, uv, diffAlbedo, diffuseTexture, specularTexture, roughnessTexture, shCoeffs, sphericalHarmonics, focals, sensors, renderAlbedo=False, lightingOnly=False, interpolation=False):
+    def render(self, cameraVertices, indices, normals, uv, diffAlbedo, diffuseTexture, specularTexture, roughnessTexture, shCoeffs, sphericalHarmonics, focals, renderAlbedo=False, lightingOnly=False, interpolation=False):
         """
         middle function between pytorch and mitsuba, we take the tensor values from our pipeline and give it to our standalone wrapper
 
         Args:
-            vertices (Tensor): _description_
-            indices (Tensor): _description_
-            normal (Tensor): _description_
-            uv (Tensor): _description_
-            diffuseTexture (Tensor): _description_
-            specularTexture (Tensor): _description_
-            roughnessTexture (Tensor): _description_
-            focal (Tensor): _description_
-            envMap (Tensor): _description_
+            vertices (B, N, 3): vertices tensor
+            indices (indices number,3): indices of the morphable model
+            normals (B, N, 3): normals of our vertices
+            uv (N, 3): uv map
+            diffAlbedo (B, N, 3) : diffuse albedo from coefficients
+            diffuseTexture (B, resX, resY, 3) or (1, resX, resY, 3): diffuse textures for all our images
+            specularTexture (B, resX, resY, 3) or (1, resX, resY, 3): specular textures for all our images
+            roughnessTexture (B, resX, resY, 3) or (1, resX, resY, 3): roughness textures for all our images
+            shCoeffs (B, sh order ^2,3) : sh coefficients
+            sphericalHarmonics : SH class object that helps us to do envMap conversions
+            focals (B): focals for our scenes
+            renderAlbedo bool : render only with albedo
+            lightingOnly bool : render only the lighting impact
+            interpolation bool : should we do interpolation 
 
         Returns:
-            image Tensor: the render based on our inputs
+            images (B, resX, resY, 4): the renders based on our inputs
         """
         envMap = sphericalHarmonics.toEnvMap(shCoeffs)
         assert(envMap.dim() == 4 and envMap.shape[-1] == 3)
         assert(cameraVertices.shape[0] == envMap.shape[0])
-        # assert that our scene has the same amount of sensors as the amount of images
         
         self.fov =  torch.tensor([360.0 * torch.atan(self.screenWidth / (2.0 * focals)) / torch.pi]) # from renderer.py
         

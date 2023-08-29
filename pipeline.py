@@ -1,4 +1,3 @@
-import math
 from renderers.renderer import *
 from sphericalharmonics import SphericalHarmonics
 from morphablemodel import MorphableModel
@@ -33,13 +32,12 @@ class Pipeline:
                                              device = self.device
                                              )
         self.renderer = self.reloadRenderer(rendererName) 
-        # self.renderer.morphableModel = self.morphableModel
         self.uvMap = self.morphableModel.uvMap.clone()
         self.uvMap[:, 1] = 1.0 - self.uvMap[:, 1]
         self.faces32 = self.morphableModel.faces.to(torch.int32).contiguous()
         self.shBands = config.bands
         self.sharedIdentity = False
-        
+
     def initSceneParameters(self, n, sharedIdentity = False):
         '''
         init pipeline parameters (face shape, albedo, exp coeffs, light and  head pose (camera))
@@ -71,6 +69,7 @@ class Pipeline:
 
         texRes = self.morphableModel.getTextureResolution()
         self.vRoughness = 0.4 * torch.ones([nShape, texRes, texRes, 1], dtype=torch.float32, device=self.device)
+
     def computeShape(self):
         '''
         compute shape vertices from the shape and expression coefficients
@@ -101,7 +100,7 @@ class Pipeline:
     # generic render method
     def render(self, cameraVerts = None, diffAlbedo = None, specAlbedo = None, diffuseTextures = None, specularTextures = None, roughnessTextures = None,  renderAlbedo= False, lightingOnly=False, interpolation = False ):
         
-        if cameraVerts is None :
+        if cameraVerts is None:
             vertices = self.morphableModel.computeShape(self.vShapeCoeff, self.vExpCoeff)
             cameraVerts = self.camera.transformVertices(vertices, self.vTranslation, self.vRotation)
         if diffAlbedo is None :
@@ -127,9 +126,9 @@ class Pipeline:
         assert (specularTextures.dim() == 4 and specularTextures.shape[1] == specularTextures.shape[2] == self.morphableModel.getTextureResolution() and specularTextures.shape[-1] == 3)
         assert (roughnessTextures.dim() == 4 and roughnessTextures.shape[1] == roughnessTextures.shape[2] == self.morphableModel.getTextureResolution() and roughnessTextures.shape[-1] == 1)
         assert (diffuseTextures.shape[0] == specularTextures.shape[0] == roughnessTextures.shape[0])
-        
+
         return self.renderer.render(cameraVerts, self.faces32, normals, self.uvMap, diffAlbedo, torch.clamp(diffuseTextures, 1e-20, 10.0), torch.clamp(specularTextures, 1e-20, 10.0), torch.clamp(roughnessTextures, 1e-20, 10.0), self.vShCoeffs, self.sh, self.vFocals, renderAlbedo, lightingOnly, interpolation)
-    
+
     def landmarkLoss(self, cameraVertices, landmarks, focals, cameraCenters,  debugDir = None):
         '''
         calculate scalar loss between vertices in camera space and 2d landmarks pixels
@@ -162,18 +161,18 @@ class Pipeline:
     def reloadRenderer(self, rendererName):
         if rendererName == 'redner':
             from renderers.rendererRedner import RendererRedner
-            return RendererRedner(self.config.rtTrainingSamples, self.config.bounces, self.device, self.config.maxResolution, self.config.maxResolution)
+            self.renderer = RendererRedner(self.config.rtTrainingSamples, self.config.bounces, self.device, self.config.maxResolution, self.config.maxResolution)
         elif rendererName == 'mitsuba':
             from renderers.rendererMitsuba import RendererMitsuba
-            return RendererMitsuba(self.config.rtTrainingSamples, self.config.bounces, self.device, self.config.maxResolution, self.config.maxResolution) 
+            self.renderer = RendererMitsuba(self.config.rtTrainingSamples, self.config.bounces, self.device, self.config.maxResolution, self.config.maxResolution) 
         elif rendererName == 'vertex':
             from renderers.rendererVertexBased import RendererVertexBased
-            return RendererVertexBased(self.device, self.config.maxResolution, self.config.maxResolution) 
+            self.renderer = RendererVertexBased(self.device, self.config.maxResolution, self.config.maxResolution) 
         else :
             # check config file as last resort
             rendererName == self.config.rendererName
             if rendererName in ['redner','mitsuba','vertex'] :
                 self.reloadRenderer(rendererName)
             else:
-                return Renderer()
+                self.renderer = Renderer()
                 
