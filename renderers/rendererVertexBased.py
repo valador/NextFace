@@ -55,10 +55,6 @@ class RendererVertexBased(Renderer):
             _type_: _description_
         """
         B = cameraVertices.shape[0]  # Batch size
-        # if verticesColor.shape[0] != B :
-        #     verticesColor = verticesColor.repeat(B,1,1)
-        #if shareIdentity (B verticesColor = 1 and B != 1)
-        # make verticesColor x B for tensor and use it as such
         width = self.screenWidth
         height = self.screenHeight
         images_data = torch.zeros((B, height, width, 4), dtype=torch.float32, device=self.device)

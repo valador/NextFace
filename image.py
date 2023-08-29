@@ -23,7 +23,7 @@ def saveImage(image, fileName, gamma = 2.2):
         print(f"IGNORE SAVING: {fileName}")
     else:
         image = image.permute(2, 0, 1) # Need to permute
-        image = torch.pow(image, 1.0/gamma) # TODO: gamma correction
+        image = torch.pow(image, 1.0/gamma) # gamma correction
         torchvision.utils.save_image(image.cpu().detach(), fileName) 
         
 def overlayImage(background, image):

@@ -32,7 +32,7 @@ class Pipeline:
                                              landmarksPathName=pathLandmarksAssociation,
                                              device = self.device
                                              )
-        self.renderer = self.createRenderer(rendererName) 
+        self.renderer = self.reloadRenderer(rendererName) 
         # self.renderer.morphableModel = self.morphableModel
         self.uvMap = self.morphableModel.uvMap.clone()
         self.uvMap[:, 1] = 1.0 - self.uvMap[:, 1]
@@ -71,7 +71,6 @@ class Pipeline:
 
         texRes = self.morphableModel.getTextureResolution()
         self.vRoughness = 0.4 * torch.ones([nShape, texRes, texRes, 1], dtype=torch.float32, device=self.device)
-        print('vROugh defined')
     def computeShape(self):
         '''
         compute shape vertices from the shape and expression coefficients
@@ -159,11 +158,8 @@ class Pipeline:
                 cv2.imwrite(debugDir + '/lp' +  str(i) +'.png', cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
 
         return loss
-    def reloadRenderer(self, rendererName):
-        # TODO clear cache from previous variable ?
-        self.renderer = self.createRenderer(rendererName)
         
-    def createRenderer(self, rendererName):
+    def reloadRenderer(self, rendererName):
         if rendererName == 'redner':
             from renderers.rendererRedner import RendererRedner
             return RendererRedner(self.config.rtTrainingSamples, self.config.bounces, self.device, self.config.maxResolution, self.config.maxResolution)
@@ -177,7 +173,7 @@ class Pipeline:
             # check config file as last resort
             rendererName == self.config.rendererName
             if rendererName in ['redner','mitsuba','vertex'] :
-                self.createRenderer(rendererName)
+                self.reloadRenderer(rendererName)
             else:
                 return Renderer()
                 

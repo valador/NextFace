@@ -18,8 +18,6 @@ class RendererMitsuba(Renderer):
         self.screenWidth = screenWidth
         self.screenHeight = screenHeight
         mi.set_variant('cuda_ad_rgb')
-        mi.LogLevel(1)
-        dr.set_log_level(dr.LogLevel.Info)
         dr.set_device(0)
         self.scene = self.buildInitialScene() # init my scene
         
@@ -122,7 +120,6 @@ class RendererMitsuba(Renderer):
         # params["mesh.bsdf.specular.data"] = mi.TensorXf(specularTexture) 
         # params["mesh.bsdf.roughness.data"] = mi.TensorXf(roughnessTexture)
         params["mesh.bsdf.base_color.data"] = mi.TensorXf(diffuseTexture)
-        # params["mesh.bsdf.specular.data"] = mi.TensorXf(specularTexture) # principled doesnt support specular textures
         params["mesh.bsdf.roughness.data"] = mi.TensorXf(roughnessTexture)
         #update envMaps
         params["light.data"] = mi.TensorXf(envMap)

@@ -246,6 +246,7 @@ class Optimizer:
 
         # Save the image
         cv2.imwrite(outputPrefix + '.png', debugFrame)
+        
     def debugTensor(self, debugTensor):
         """display a tensor of shape [x, y, 3]
 
@@ -309,16 +310,6 @@ class Optimizer:
             if self.verbose:
                 with open(self.outputDir+'loss_step1.txt', 'a') as file:
                     print(iter, '=>', loss.item(),file =file)
-            if self.config.debugFrequency > 0 and iter % self.config.debugFrequency == 0:
-                    # save obj
-                    cameraNormals = self.pipeline.morphableModel.computeNormals(cameraVertices) # only used of obj (might be too slow)
-                    saveObj(self.debugDir + '/mesh/' + self.rendererName+'_step1_iter' + str(iter)+'.obj',
-                            'material' + str(iter) + '.mtl',
-                            cameraVertices[0],
-                            self.pipeline.faces32,
-                            cameraNormals[0],
-                            self.pipeline.morphableModel.uvMap,
-                            self.debugDir + 'diffuseMap_' + str(self.getTextureIndex(0)) + '.png')
 
         self.plotLoss(losses, 0, self.outputDir + 'checkpoints/stage1_loss.png')
         self.saveParameters(self.outputDir + 'checkpoints/stage1_output.pickle')
@@ -375,21 +366,6 @@ class Optimizer:
                     print(f"Iteration {iter:03d}: Loss {self.rendererName} = {loss.item():6f}", end='\r',file=file)
             if self.config.debugFrequency > 0 and iter % self.config.debugFrequency == 0:
                 self.debugFrame(images[..., 0:3], inputTensor, diff, diffuseTextures, specularTextures, roughTextures, self.debugDir + '/results/'+self.rendererName+'_step2_' + str(iter))
-                # generate one with mitsuba for reference
-                if self.rendererName == 'vertex':
-                    lightingVertexRender = self.pipeline.render(cameraVerts=cameraVerts, diffAlbedo=diffAlbedo, specAlbedo=specAlbedo, diffuseTextures=diffuseTextures, specularTextures=specularTextures, roughnessTextures=roughTextures, lightingOnly=True)
-                    albedoVertexRender = self.pipeline.render(cameraVerts=cameraVerts, diffAlbedo=diffAlbedo, specAlbedo=specAlbedo, diffuseTextures=diffuseTextures, specularTextures=specularTextures, roughnessTextures=roughTextures, renderAlbedo=True)
-                    self.debugIteration(images[..., 0:3], inputTensor, diff, albedoVertexRender, lightingVertexRender, self.debugDir + '/results/'+self.rendererName+ str(iter)+'_detailled_step2') # custom made
-                # also save obj
-                cameraNormals = self.pipeline.morphableModel.computeNormals(cameraVerts) # only used of obj (might be too slow)
-                for i in range(inputTensor.shape[0]):
-                    saveObj(self.debugDir + '/mesh/' + self.rendererName+'_step2_iter' + str(iter)+'.obj',
-                            'material' + str(iter) + '.mtl',
-                            cameraVerts[i],
-                            self.pipeline.faces32,
-                            cameraNormals[i],
-                            self.pipeline.morphableModel.uvMap,
-                            self.debugDir + 'diffuseMap_' + str(self.getTextureIndex(i)) + '.png')
                    
         self.plotLoss(losses, 1, self.outputDir + 'checkpoints/stage2_loss.png')
         self.saveParameters(self.outputDir + 'checkpoints/stage2_output.pickle')
@@ -459,20 +435,6 @@ class Optimizer:
 
             if self.config.debugFrequency > 0 and iter % self.config.debugFrequency == 0:
                 self.debugFrame(rgba_img[..., 0:3], inputTensor, diff, vDiffTextures, vSpecTextures, vRoughTextures, self.debugDir + '/results/'+self.rendererName+'_step3_' + str(iter))
-                if self.rendererName == 'vertex':
-                    lightingVertexRender = self.pipeline.render(cameraVerts=cameraVerts,diffAlbedo=diffAlbedo, specAlbedo=specAlbedo, diffuseTextures=vDiffTextures,specularTextures=vSpecTextures,roughnessTextures=vRoughTextures, lightingOnly=True)
-                    albedoVertexRender = self.pipeline.render(cameraVerts=cameraVerts,diffAlbedo=diffAlbedo, specAlbedo=specAlbedo, diffuseTextures=vDiffTextures,specularTextures=vSpecTextures,roughnessTextures=vRoughTextures, renderAlbedo=True)
-                    self.debugIteration(rgba_img[..., 0:3], inputTensor,diff, albedoVertexRender, lightingVertexRender, self.debugDir + '/results/'+self.rendererName+ str(iter)+'_detailled_step3') # custom made
-                # also save obj
-                cameraNormals = self.pipeline.morphableModel.computeNormals(cameraVerts) # only used of obj (might be too slow)
-                for i in range(inputTensor.shape[0]):
-                    saveObj(self.debugDir + '/mesh/' + self.rendererName+'_step3_iter_' + str(iter)+'.obj',
-                            'material' + str(iter) + '.mtl',
-                            cameraVerts[i],
-                            self.pipeline.faces32,
-                            cameraNormals[i],
-                            self.pipeline.morphableModel.uvMap,
-                            self.debugDir + 'diffuseMap_' + str(self.getTextureIndex(i)) + '.png')
                    
         self.plotLoss(losses, 2, self.outputDir + 'checkpoints/stage3_loss.png')
         self.saveParameters(self.outputDir + 'checkpoints/stage3_output.pickle')
