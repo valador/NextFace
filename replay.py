@@ -45,7 +45,7 @@ if __name__ == "__main__":
     config.fillFromDicFile(configFile)
     optimizer = Optimizer(outputDir, config)
     optimizer.pipeline.renderer.samples = config.rtSamples
-    optimizer.pipeline.initSceneParameters(1,0)
+    optimizer.pipeline.initSceneParameters(1)
     optimizer.loadParameters(parameters)
 
     DTR = math.pi / 180.0

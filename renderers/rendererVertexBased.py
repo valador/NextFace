@@ -23,10 +23,6 @@ class RendererVertexBased(Renderer):
             normals        -- torch.tensor, size (B, N, 3), rotated face normal
             Y              -- torch.tensor, size (B, N, 81), sh basis functions, should be (order +1 )^2
         """
-        # handle share identity use cases
-        if torch.isnan(shCoeffs).any():
-            print('helo')
-           
         if renderAlbedo :
             return diffAlbedo
         
@@ -58,7 +54,8 @@ class RendererVertexBased(Renderer):
         Returns:
             _type_: _description_
         """
-        
+        print('verticesColor shape')
+        print(verticesColor.shape)
         B = cameraVertices.shape[0]  # Batch size
         # if verticesColor.shape[0] != B :
         #     verticesColor = verticesColor.repeat(B,1,1)
@@ -73,7 +70,7 @@ class RendererVertexBased(Renderer):
             if verticesColor.shape[0] != B :
                 texIndex = 0
             else:
-                texIndex = 1
+                texIndex = i
             fov = torch.tensor([360.0 * torch.atan(width / (2.0 * focals[i])) / torch.pi]) # from renderer.py
 
             # Same code as before, but adapted to handle individual images within the batch
@@ -92,6 +89,8 @@ class RendererVertexBased(Renderer):
 
             verticesColor_single = verticesColor[texIndex: texIndex+1].squeeze(0)
             mask = mask.squeeze(0)
+            print(mask.shape)
+            print(verticesColor_single.shape)
             colors_in_screen_space = verticesColor_single[mask]
 
             # Interpolation if needed
