@@ -7,10 +7,8 @@ from typing import Tuple
 # We are assuming all component used
 class RednerMat(mi.BSDF):
     def __init__(self, props: mi.Properties) -> None:
-        # super().__init__(props)
-        mi.BSDF.__init__(self, props)
+        super().__init__(props)
         
-        # # print('init start')
         self.albedo = props.get("albedo", mi.Texture.D65(0.1))
         self.roughness = props.get("roughness", mi.Texture.D65(0.1))
         self.specular = props.get("specular", mi.Texture.D65(0.1))
@@ -27,27 +25,14 @@ class RednerMat(mi.BSDF):
         
         cos_theta = v.z
         # tan^2 + 1 = 1/cos^2
-        tan_theta = dr.safe_sqrt(dr.maximum(1 / (cos_theta * cos_theta) - 1.0, 0))
-        alpha = dr.safe_sqrt(roughness)
-        a = 1.0 / (alpha * tan_theta)
+        tan_theta = dr.safe_sqrt(1 / (cos_theta * cos_theta) - 1.0)
+        
+        a =  dr.rcp(dr.sqrt(roughness) * tan_theta)
         result = dr.select(
             a > 1.6, 1, 
             (3.535 * a + 2.181 * a * a) / (1.0 + 2.276 * a + 2.577 * a*a)
         )
-        result = dr.select(tan_theta < 0.0001, 1, result)
-        # # print('smitG1 end')
-        
-        return result
-    
-    def warp_cosine(sample: mi.Point2f) -> mi.Vector3f:
-        # # print('warp_cosine start')
-        
-        phi = math.pi * 2.0 * sample[1]
-        z = dr.sqrt(sample[0])
-        theta = dr.acos(z)
-        res = mi.Vector3f(dr.sin(theta) * dr.cos(phi), dr.sin(theta) * dr.sin(phi), z)
-        # # print('warp_cosine end')
-        return res
+        return dr.select(dr.eq(tan_theta,0.0), 1, result)
     
     def eval(self, ctx: mi.BSDFContext, si: mi.SurfaceInteraction3f, wo: mi.Vector3f, active: bool = True) -> mi.Color3f:
         # Calcul contribution diffuse
@@ -82,7 +67,7 @@ class RednerMat(mi.BSDF):
         specular_pmf = dr.select(weight_pmf > 0.0, specular_pmf / weight_pmf, 0.0)
         
         # Compute diffuse PDF
-        diffuse_pdf = dr.select(diffuse_pmf > 0, diffuse_pmf * dr.maximum(wo.z, 0.0) / math.pi, 0.0)
+        diffuse_pdf = mi.warp.square_to_cosine_hemisphere_pdf(wo) * diffuse_pmf
         
         # Compute specular PDF
         m = dr.normalize(si.wi + wo)
@@ -94,7 +79,7 @@ class RednerMat(mi.BSDF):
         # # print('pdf end')
         return res # [float]
     
-    def eval_pdf(self, ctx: mi.BSDFContext, si: mi.SurfaceInteraction3f, wo: mi.Vector3f, active: bool = True) -> Tuple[mi.Color3f, float]:
+    def eval_pdf(self, ctx: mi.BSDFContext, si: mi.SurfaceInteraction3f, wo: mi.Vector3f, active: bool = True) -> Tuple[mi.Color3f, mi.Float]:
         # TODO: Could be more efficient by fusing some computations
         if not ctx.is_enabled(mi.BSDFFlags.GlossyReflection) :
             return {0.0, 0.0}
@@ -104,7 +89,7 @@ class RednerMat(mi.BSDF):
         # # print('eval_pdf end')
         return res
     
-    def sample(self, ctx: mi.BSDFContext, si: mi.SurfaceInteraction3f, sample1: float, sample2: mi.Point2f, active: bool = True) -> Tuple[mi.BSDFSample3f, mi.Color3f]:
+    def sample(self, ctx: mi.BSDFContext, si: mi.SurfaceInteraction3f, sample1: mi.Float, sample2: mi.Point2f, active: bool = True) -> Tuple[mi.BSDFSample3f, mi.Color3f]:
         # Compute PDF selection
         # print('sample start')
         
@@ -118,40 +103,31 @@ class RednerMat(mi.BSDF):
         specular_pmf = dr.select(weight_pmf > 0.0, specular_pmf / weight_pmf, 0.0)
         # print('before mask')
         # Compute masks
-        diffuse_mask = active & (diffuse_pmf < sample1)
-        specular_mask = active & ~diffuse_mask
+        diffuse_mask = diffuse_pmf < sample1
+        specular_mask = ~diffuse_mask
         
         # print('after mask')
         # Example to do specular and diffuse sampling
         # https://github.com/mitsuba-renderer/mitsuba3/blob/6105dfc1057a3bc204393b8e9557bcb26e08568b/src/bsdfs/pplastic.cpp#L243C9-L256C10
         # Uses a lot of masks
         bs: mi.BSDFSample3f = dr.zeros(mi.BSDFSample3f)
-        bs.eta = 1.0
-        # print('zeros')
-        bs.sampled_type = mi.UInt32(mi.BSDFFlags.GlossyReflection) # Let's do not differentiate the two for the moment
-        bs.sampled_component = mi.UInt32(0)
-        # print('if conditions')
-        # print('sample1 width')
-        # print(dr.width(sample1))
-        # print('diff mask width')
-        # print(dr.width(diffuse_mask)) # thread 1 -> 916 154, thread 2 -> 1, thread 3 -> 1
-        # print('dr any')
-        if dr.width(sample1) > 1 :
-            if dr.any(diffuse_mask): 
-                # print('diffuse mask')
-                bs.wo[diffuse_mask] = RednerMat.warp_cosine(sample2)
-            if dr.any(specular_mask):
-                # print('specular mask')
-                roughness = dr.maximum(self.roughness.eval_1(si, active),0.00001)
-                phong_exponent = RednerMat.roughness_to_phong(roughness)
-                phi = 2.0 * math.pi * sample2[1]
-                sin_phi = dr.sin(phi)
-                cos_phi = dr.cos(phi)
-                cos_theta = dr.power(sample2[0], 1.0 / (phong_exponent + 2.0))
-                sin_theta = dr.safe_sqrt(1.0 - cos_theta * cos_theta)
-                m = mi.Vector3f(sin_theta * cos_phi, sin_theta * sin_phi, cos_theta)
-                bs.wo[specular_mask] = mi.reflect(si.wi, m)
-        # print('compute pdf')
+        bs.eta = 1
+        bs.sampled_type = mi.BSDFFlags.GlossyReflection # Let's do not differentiate the two for the moment
+        bs.sampled_component = 0
+        
+        #if dr.any(diffuse_mask):
+        bs.wo[diffuse_mask] = mi.warp.square_to_cosine_hemisphere(sample2)
+        
+        roughness = dr.maximum(self.roughness.eval_1(si, active),0.00001)
+        phong_exponent = RednerMat.roughness_to_phong(roughness)
+        phi = 2.0 * math.pi * sample2[1]
+        sin_phi = dr.sin(phi)
+        cos_phi = dr.cos(phi)
+        cos_theta = dr.power(sample2[0], 1.0 / (phong_exponent + 2.0))
+        sin_theta = dr.safe_sqrt(1.0 - cos_theta * cos_theta)
+        m = mi.Vector3f(sin_theta * cos_phi, sin_theta * sin_phi, cos_theta)
+        bs.wo[specular_mask] = mi.reflect(si.wi, m)
+        
         # Compute PDF
         bs.pdf = self.pdf(ctx, si, bs.wo, active)
         active &= bs.pdf > 0.0
