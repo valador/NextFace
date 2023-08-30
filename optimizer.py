@@ -287,9 +287,11 @@ class Optimizer:
             loss.backward()
             optimizer.step()
             if self.verbose:
-                print(iter, '. photo Loss:', loss,
+                print(iter, '. photo Loss:', photoLoss,
                       '. landmarks Loss: ', landmarksLoss.item(),
                       '. regLoss: ', regLoss.item())
+                with open(self.outputDir+'loss_step2_detailed.txt', 'a') as file:
+                    print(f"Iteration [{iter:03d}]: Photo loss [{photoLoss:6f}] landmarks Loss [{landmarksLoss.item():6f}] regLoss: [{regLoss.item():6f}] total [{loss.item():6f}]", end='\r',file=file)
                 with open(self.outputDir+'loss_step2.txt', 'a') as file:
                     print(f"Iteration {iter:03d}: Loss {self.rendererName} = {loss.item():6f}", end='\r',file=file)
             if self.config.debugFrequency > 0 and iter % self.config.debugFrequency == 0:
@@ -358,20 +360,23 @@ class Optimizer:
                 diff = mask_alpha * (rgba_img[..., 0:3] - inputTensor).abs()
 
             #loss =  diff.mean(dim=-1).sum() / float(self.framesNumber)
-            loss = 1000.0 * diff.mean()
-            loss += 0.2 * (self.textureLoss.regTextures(vDiffTextures, refDiffTextures, ws = self.config.weightDiffuseSymmetryReg, wr =  self.config.weightDiffuseConsistencyReg, wc = self.config.weightDiffuseConsistencyReg, wsm = self.config.weightDiffuseSmoothnessReg, wm = 0.) + \
+            photoLoss = 1000.0 * diff.mean()
+            textureLoss = 0.2 * (self.textureLoss.regTextures(vDiffTextures, refDiffTextures, ws = self.config.weightDiffuseSymmetryReg, wr =  self.config.weightDiffuseConsistencyReg, wc = self.config.weightDiffuseConsistencyReg, wsm = self.config.weightDiffuseSmoothnessReg, wm = 0.) + \
                     self.textureLoss.regTextures(vSpecTextures, refSpecTextures, ws = self.config.weightSpecularSymmetryReg, wr = self.config.weightSpecularConsistencyReg, wc = self.config.weightSpecularConsistencyReg, wsm = self.config.weightSpecularSmoothnessReg, wm = 0.5) + \
                     self.textureLoss.regTextures(vRoughTextures, refRoughTextures, ws = self.config.weightRoughnessSymmetryReg, wr = self.config.weightRoughnessConsistencyReg, wc = self.config.weightRoughnessConsistencyReg, wsm = self.config.weightRoughnessSmoothnessReg, wm = 0.))
-            loss += 0.0001 * self.pipeline.vShCoeffs.pow(2).mean()
-            loss += self.config.weightExpressionReg * self.regStatModel(self.pipeline.vExpCoeff, self.pipeline.morphableModel.expressionPcaVar)
-            loss += self.config.weightShapeReg * self.regStatModel(self.pipeline.vShapeCoeff, self.pipeline.morphableModel.shapePcaVar)
-            loss += self.config.weightLandmarksLossStep3 * self.landmarkLoss(cameraVerts, self.landmarks)
-
+            regLoss = 0.0001 * self.pipeline.vShCoeffs.pow(2).mean()
+            regLoss += self.config.weightExpressionReg * self.regStatModel(self.pipeline.vExpCoeff, self.pipeline.morphableModel.expressionPcaVar)
+            regLoss += self.config.weightShapeReg * self.regStatModel(self.pipeline.vShapeCoeff, self.pipeline.morphableModel.shapePcaVar)
+            regLoss += self.config.weightLandmarksLossStep3 * self.landmarkLoss(cameraVerts, self.landmarks)
+            loss = photoLoss + textureLoss + regLoss
             losses.append(loss.item())
 
             loss.backward()
             optimizer.step()
             if self.verbose:
+                with open(self.outputDir+'loss_step3_detailed.txt', 'a') as file:
+                    print(f"Iteration [{iter:03d}]: Photo loss [{photoLoss:6f}] texture Loss [{textureLoss.item():6f}] regLoss: [{regLoss.item():6f}] total [{loss.item():6f}]", end='\r',file=file)
+                
                 with open(self.outputDir+'loss_step3.txt', 'a') as file:
                     print(iter, ' => Loss:', loss.item(),file=file)
 
