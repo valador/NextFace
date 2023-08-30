@@ -385,7 +385,7 @@ class Optimizer:
                     # also save obj
                     cameraNormals = self.pipeline.morphableModel.computeNormals(cameraVerts) # only used of obj (might be too slow)
                     for i in range(inputTensor.shape[0]):
-                        saveObj(self.debugDir + '/mesh/' + self.rendererName+'_step3_iter_' + str(iter)+'.obj',
+                        saveObj(self.debugDir + '/mesh/' + self.rendererName+'_step3_iter' + str(iter)+'.obj',
                                 'material' + str(iter) + '.mtl',
                                 cameraVerts[i],
                                 self.pipeline.faces32,
