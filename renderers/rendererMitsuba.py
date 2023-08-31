@@ -140,9 +140,9 @@ class RendererMitsuba(Renderer):
         # update BSDF
         # https://mitsuba.readthedocs.io/en/stable/src/generated/plugins_bsdfs.html#smooth-diffuse-material-diffuse
         # RednerMat
-        params["mesh.bsdf.albedo.data"] = mi.TensorXf(diffuseTexture)
-        params["mesh.bsdf.specular.data"] = mi.TensorXf(specularTexture) 
-        params["mesh.bsdf.roughness.data"] = mi.TensorXf(roughnessTexture)
+        params["mesh.bsdf.albedo.data"] = mi.TensorXf(dr.clip(diffuseTexture, 0, 1))
+        params["mesh.bsdf.specular.data"] = mi.TensorXf(dr.clip(specularTexture, 0, 1)) 
+        params["mesh.bsdf.roughness.data"] = mi.TensorXf(dr.clip(roughnessTexture, 0.00001, 10.0))
         # principled
         # params["mesh.bsdf.base_color.data"] = mi.TensorXf(diffuseTexture)
         # params["mesh.bsdf.roughness.data"] = mi.TensorXf(roughnessTexture)
