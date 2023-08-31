@@ -98,7 +98,7 @@ class Pipeline:
         return transformedVertices
 
     # generic render method
-    def render(self, cameraVerts = None, diffAlbedo = None, specAlbedo = None, diffuseTextures = None, specularTextures = None, roughnessTextures = None,  renderAlbedo= False, lightingOnly=False, interpolation = False ):
+    def render(self, cameraVerts = None, diffAlbedo = None, specAlbedo = None, diffuseTextures = None, specularTextures = None, roughnessTextures = None,  renderAlbedo= False, lightingOnly=False):
         
         if cameraVerts is None:
             vertices = self.morphableModel.computeShape(self.vShapeCoeff, self.vExpCoeff)
@@ -127,7 +127,7 @@ class Pipeline:
         assert (roughnessTextures.dim() == 4 and roughnessTextures.shape[1] == roughnessTextures.shape[2] == self.morphableModel.getTextureResolution() and roughnessTextures.shape[-1] == 1)
         assert (diffuseTextures.shape[0] == specularTextures.shape[0] == roughnessTextures.shape[0])
 
-        return self.renderer.render(cameraVerts, self.faces32, normals, self.uvMap, diffAlbedo, torch.clamp(diffuseTextures, 1e-20, 10.0), torch.clamp(specularTextures, 1e-20, 10.0), torch.clamp(roughnessTextures, 1e-20, 10.0), self.vShCoeffs, self.sh, self.vFocals, renderAlbedo, lightingOnly, interpolation)
+        return self.renderer.render(cameraVerts, self.faces32, normals, self.uvMap, diffAlbedo, torch.clamp(diffuseTextures, 1e-20, 10.0), torch.clamp(specularTextures, 1e-20, 10.0), torch.clamp(roughnessTextures, 1e-20, 10.0), self.vShCoeffs, self.sh, self.vFocals, renderAlbedo, lightingOnly)
 
     def landmarkLoss(self, cameraVertices, landmarks, focals, cameraCenters,  debugDir = None):
         '''

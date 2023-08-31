@@ -163,7 +163,7 @@ class RendererRedner(Renderer):
         self.counter += 1
         return images
     
-    def render(self, cameraVertices, indices, normals, uv, diffAlbedo, diffuseTexture, specularTexture, roughnessTexture, shCoeffs, sphericalHarmonics, focals, renderAlbedo=False, lightingOnly=False, interpolation=False):
+    def render(self, cameraVertices, indices, normals, uv, diffAlbedo, diffuseTexture, specularTexture, roughnessTexture, shCoeffs, sphericalHarmonics, focals, renderAlbedo=False, lightingOnly=False):
         """
         Render images with redner based on inputs
 
@@ -181,7 +181,6 @@ class RendererRedner(Renderer):
             focals (B): focals for our scenes
             renderAlbedo bool : render only with albedo
             lightingOnly bool : render only the lighting impact
-            interpolation bool : should we do interpolation 
         Returns:
             images (B, resX, resY, 4): the renders based on our inputs
         """

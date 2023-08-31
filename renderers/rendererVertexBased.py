@@ -44,7 +44,7 @@ class RendererVertexBased(Renderer):
         return torch.pow(face_color, 1.0/ self.gammaCorrection)
     
     # predict face and mask
-    def computeVertexImage(self, cameraVertices, verticesColor, normals, focals, interpolation=False) : 
+    def computeVertexImage(self, cameraVertices, verticesColor, normals, focals) : 
         """generate multiple vertex based images
 
         Args:
@@ -52,7 +52,6 @@ class RendererVertexBased(Renderer):
             verticesColor (tensor [B, N, 3]): color for each vertex
             normals (tensor [B, N, 3]): normal for each vertex
             focals (tensor [B]): focals for each batch
-            interpolation (bool, optional): should we apply interpolation between all vertices. Defaults to False.
 
         Returns:
             image [B, resX, resY, 4]: vertex based images
@@ -88,36 +87,13 @@ class RendererVertexBased(Renderer):
             mask = mask.squeeze(0)
             colors_in_screen_space = verticesColor_single[mask]
 
-            # Interpolation if needed
-            if interpolation:
-                vertices_in_screen_space = vertices_in_screen_space.long()  # Convert to long for indexing
-                vertices_in_screen_space.clamp_(0, max=self.screenWidth-1)  # Clamp to valid pixel range 
-                y_indices, x_indices = vertices_in_screen_space[:, 1], vertices_in_screen_space[:, 0] # create two tensors for values
-                # Perform scatter operation + add alpha values
-                images_data[i, y_indices, x_indices, :3] += colors_in_screen_space # add colors to pixels
-                    # ----------
-                # Define the interpolation factor
-                interpolation_factor = 32
-                # Prepare for bilinear interpolation by adding an extra dimension (required for F.interpolate)
-                # Rearrange the tensor to [batch, channel, height, width]
-                images_data = images_data.permute(0, 3, 1, 2)  # shape: [Batch, Channels, Height, Width]
-
-                # Perform bilinear interpolation
-                images_data = torch.nn.functional.interpolate(images_data, scale_factor=interpolation_factor, mode='bilinear', align_corners=True)
-
-                # Reduce back to the original size by average pooling
-                images_data = torch.nn.functional.avg_pool2d(images_data, interpolation_factor)
-
-                # Rearrange the tensor back to [batch, height, width, channel]
-                images_data = images_data.permute(0, 2, 3, 1)  # shape: [1, H, W, 3]
-            else:
-                # Convert vertices and colors to an image without interpolation
-                vertices_in_screen_space = vertices_in_screen_space.long()  # Convert to long for indexing
-                vertices_in_screen_space.clamp_(0, max=self.screenWidth-1)  # Clamp to valid pixel range 
-                y_indices, x_indices = vertices_in_screen_space[:, 1], vertices_in_screen_space[:, 0] # create two tensors for values
-                # Perform scatter operation + add alpha values
-                counter[i, y_indices, x_indices] += 1 # count all the pixels that have a vertex on them
-                images_data[i, y_indices, x_indices, :3] += colors_in_screen_space # add colors to pixels
+            # Convert vertices and colors to an image 
+            vertices_in_screen_space = vertices_in_screen_space.long()  # Convert to long for indexing
+            vertices_in_screen_space.clamp_(0, max=self.screenWidth-1)  # Clamp to valid pixel range 
+            y_indices, x_indices = vertices_in_screen_space[:, 1], vertices_in_screen_space[:, 0] # create two tensors for values
+            # Perform scatter operation + add alpha values
+            counter[i, y_indices, x_indices] += 1 # count all the pixels that have a vertex on them
+            images_data[i, y_indices, x_indices, :3] += colors_in_screen_space # add colors to pixels
                 
             # Update the alpha channel of those pixels to 1 where we have updated the color
             alpha_mask = counter[i, y_indices, x_indices].sum(dim=1) > 0 # create a mask for each vertex where there is at least one pixel splat there
@@ -178,7 +154,7 @@ class RendererVertexBased(Renderer):
         # ])
         return projMatrix
     # overloading this method
-    def render(self, cameraVertices, indices, normals, uv, diffAlbedo, diffuseTexture, specularTexture, roughnessTexture, shCoeffs, sphericalHarmonics, focals, renderAlbedo=False, lightingOnly=False, interpolation=False ):
+    def render(self, cameraVertices, indices, normals, uv, diffAlbedo, diffuseTexture, specularTexture, roughnessTexture, shCoeffs, sphericalHarmonics, focals, renderAlbedo=False, lightingOnly=False):
         """
         Take inputs, generate color for each vertex and project them on the screen
 
@@ -196,13 +172,12 @@ class RendererVertexBased(Renderer):
             focals (B): focals for our scenes
             renderAlbedo bool : render only with albedo
             lightingOnly bool : render only the lighting impact
-            interpolation bool : should we do interpolation 
         Returns:
             images (B, resX, resY, 4): the renders based on our inputs
         """
         shBasisFunctions = sphericalHarmonics.preComputeSHBasisFunction(normals, sh_order=8)
 
         vertexColors = self.computeVertexColor(diffAlbedo, shCoeffs, shBasisFunctions, renderAlbedo=renderAlbedo, lightingOnly=lightingOnly)
-        imgs =  self.computeVertexImage(cameraVertices, vertexColors, normals, focals, interpolation=interpolation)
+        imgs =  self.computeVertexImage(cameraVertices, vertexColors, normals, focals)
         return imgs
         
