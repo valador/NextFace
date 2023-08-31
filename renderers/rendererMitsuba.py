@@ -30,33 +30,24 @@ class RendererMitsuba(Renderer):
         Returns:
             scene (python dictionnary): mitsuba scene object
         """
-        
+        # generate blank textures
+        # [resX, resY, 3]
+        blankTexture = torch.empty((self.screenWidth, self.screenHeight, 3), device=self.device)
+        bitmapTexture = mi.util.convert_to_bitmap(blankTexture)
         m_bsdf = mi.load_dict({
                     'type': 'rednermat',
                     'albedo': {
                         'type': 'bitmap',
-                        'filename': "./output/mitsuba_default/diffuseMap_0.png"
+                        'bitmap': bitmapTexture
                     },                
                     'roughness':{
                         'type': 'bitmap',
-                        'filename': "./output/mitsuba_default/roughnessMap_0.png"
+                        'bitmap': bitmapTexture
                         
                     },
                     'specular':{
                         'type': 'bitmap',
-                        'filename': "./output/mitsuba_default/specularMap_0.png"
-                        
-                    }
-                })
-        rp_bsdf = mi.load_dict({
-                    'type': 'roughplastic',
-                    'diffuse_reflectance': {
-                        'type': 'bitmap',
-                        'filename': "./output/mitsuba_default/diffuseMap_0.png"
-                    },              
-                    'specular_reflectance':{
-                        'type': 'bitmap',
-                        'filename': "./output/mitsuba_default/specularMap_0.png"
+                        'bitmap': bitmapTexture
                         
                     }
                 })
@@ -81,6 +72,9 @@ class RendererMitsuba(Renderer):
                         ),
                 'film': {
                     'type': 'hdrfilm',
+                    'filter':{
+                        'type':'box'
+                    },
                     'width':  self.screenWidth,
                     'height': self.screenHeight,
                     'pixel_format':'rgba',
@@ -91,24 +85,11 @@ class RendererMitsuba(Renderer):
                 "type": "obj",
                 "filename": "./output/mitsuba_default/mesh0.obj",
                 "face_normals": True,
-                # 'bsdf':rp_bsdf,
                 'bsdf': m_bsdf
-                # 'bsdf': {
-                #     'type': 'principled',
-                #     'base_color': {
-                #         'type': 'bitmap',
-                #         'filename': "./output/mitsuba_default/diffuseMap_0.png"
-                #     },                
-                #     'roughness':{
-                #         'type': 'bitmap',
-                #         'filename': "./output/mitsuba_default/roughnessMap_0.png"
-                        
-                #     },
-                # }
             },
             'light': {
                 'type': 'envmap',
-                'filename':'./output/mitsuba_default/envMap_0.png'
+                'bitmap': bitmapTexture
             }
         })
         return self.scene

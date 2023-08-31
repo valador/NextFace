@@ -205,3 +205,52 @@ def debugTensor(debugTensor):
     plt.imshow(debugTensor)
     plt.colorbar(label='debugTensor')
     plt.show()
+    
+def screenshotMesh(names, meshDir, outputDir):
+    #  display meshes in polyscope
+    import polyscope as ps
+    import trimesh
+    import glob
+
+    # display_meshes = ["mitsuba_step2_iter0.obj","mitsuba_step2_iter400.obj","redner_step2_iter0.obj","redner_step2_iter400.obj","vertex_step2_iter0.obj","vertex_step2_iter400.obj",]  # replace this with your mesh names
+
+    # outputDir = './output/test/bikerman_512.jpg/'
+    # Get a list of all .obj files in the directory
+    # obj_files = glob.glob(os.path.join(outputDir + '/debug/mesh', "*.obj"))
+    obj_files = glob.glob(os.path.join(meshDir, "*.obj"))
+
+    # Filter obj_files to only include the ones in display_meshes
+    obj_files = [file for file in obj_files if os.path.basename(file) in names]
+
+    # Define a folder where the screenshots will be saved
+    # Check if the folder exists, if not create it
+    os.makedirs(outputDir, exist_ok=True)
+
+    # Initialize polyscope
+    ps.init()
+    ps.set_up_dir("neg_y_up")
+    ps.set_ground_plane_mode("none")
+
+    # # Show the mesh
+    # Load and register each mesh to polyscope
+    for idx, obj_file in enumerate(obj_files):
+        # mesh_name = os.path.basename(obj_file)  # get the name of the mesh
+        mesh_name = os.path.basename(obj_file)  # get the name of the mesh
+        # Load the mesh from an obj file using trimesh
+        mesh = trimesh.load_mesh(obj_file)
+        # Register the mesh to polyscope
+        ps_mesh = ps.register_surface_mesh(mesh_name, mesh.vertices, mesh.faces)
+        # Reset the transformation on the mesh
+        ps_mesh.reset_transform()
+        # Set a color for the mesh
+        color = torch.tensor([0.5, 0.5, 0.5]).numpy()  # set a fixed color
+        ps_mesh.set_color(color)
+        # Reset the view
+        ps.reset_camera_to_home_view()
+        # Show the mesh
+        ps.show()
+        # Take a screenshot and save it to the specified folder
+        screenshot_name = os.path.join(outputDir, f"{mesh_name}_screenshot.png")
+        ps.screenshot(screenshot_name)
+        # Remove the mesh from polyscope to prepare for the next one
+        ps.remove_all_structures()
