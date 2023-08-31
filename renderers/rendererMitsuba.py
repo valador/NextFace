@@ -5,10 +5,10 @@ from renderers.renderer import Renderer
 from mitsuba.scalar_rgb import Transform4f as T
 
 mi.set_variant('cuda_ad_rgb')
-mi.set_log_level(mi.LogLevel.Debug)
-mi.DEBUG = True
-dr.set_flag(dr.JitFlag.VCallRecord, False)
-dr.set_flag(dr.JitFlag.LoopRecord, False)
+# mi.set_log_level(mi.LogLevel.Debug)
+# mi.DEBUG = True
+# dr.set_flag(dr.JitFlag.VCallRecord, False)
+# dr.set_flag(dr.JitFlag.LoopRecord, False)
 from plugins import *
 class RendererMitsuba(Renderer):
 
@@ -51,6 +51,19 @@ class RendererMitsuba(Renderer):
                         
                     }
                 })
+        # m_bsdf = mi.load_dict({
+        #             'type': 'principled',
+        #             'base_color': {
+        #                 'type': 'bitmap',
+        #                 'bitmap': bitmapTexture
+        #             },                
+        #             'roughness':{
+        #                 'type': 'bitmap',
+        #                 'bitmap': bitmapTexture
+                        
+        #             }
+                    
+        #         })
         # Create scene
         self.scene = mi.load_dict({
             'type': 'scene',
