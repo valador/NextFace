@@ -7,9 +7,10 @@ from mitsuba.scalar_rgb import Transform4f as T
 mi.set_variant('cuda_ad_rgb')
 mi.set_log_level(mi.LogLevel.Debug)
 mi.DEBUG = True
-dr.set_flag(dr.JitFlag.VCallRecord, False)
-dr.set_flag(dr.JitFlag.LoopRecord, False)
+# dr.set_flag(dr.JitFlag.VCallRecord, False)
+# dr.set_flag(dr.JitFlag.LoopRecord, False)
 from plugins import *
+
 class RendererMitsuba(Renderer):
 
     def __init__(self, samples, bounces, device, screenWidth, screenHeight):
@@ -31,7 +32,7 @@ class RendererMitsuba(Renderer):
             scene (python dictionnary): mitsuba scene object
         """
         
-        m_bsdf = mi.load_dict({
+        m_bsdf = {
                     'type': 'rednermat',
                     'albedo': {
                         'type': 'bitmap',
@@ -47,8 +48,8 @@ class RendererMitsuba(Renderer):
                         'filename': "./output/mitsuba_default/specularMap_0.png"
                         
                     }
-                })
-        rp_bsdf = mi.load_dict({
+                }
+        rp_bsdf = {
                     'type': 'roughplastic',
                     'diffuse_reflectance': {
                         'type': 'bitmap',
@@ -59,7 +60,7 @@ class RendererMitsuba(Renderer):
                         'filename': "./output/mitsuba_default/specularMap_0.png"
                         
                     }
-                })
+                }
         # Create scene
         self.scene = mi.load_dict({
             'type': 'scene',
@@ -68,7 +69,8 @@ class RendererMitsuba(Renderer):
                 'type':'aov',
                 'aovs':'dd.y:depth',
                 'my_image':{
-                    'type':'direct_reparam'
+                    'type':'twostateprbpath',
+                    'max_depth' : 2
                 }
             },
             'sensor':  {
@@ -92,19 +94,12 @@ class RendererMitsuba(Renderer):
                 "filename": "./output/mitsuba_default/mesh0.obj",
                 "face_normals": True,
                 # 'bsdf':rp_bsdf,
-                'bsdf': m_bsdf
-                # 'bsdf': {
-                #     'type': 'principled',
-                #     'base_color': {
-                #         'type': 'bitmap',
-                #         'filename': "./output/mitsuba_default/diffuseMap_0.png"
-                #     },                
-                #     'roughness':{
-                #         'type': 'bitmap',
-                #         'filename': "./output/mitsuba_default/roughnessMap_0.png"
-                        
-                #     },
-                # }
+                'bsdf': {
+                    'type': 'twostate',
+                    'old': m_bsdf,
+                    'new': m_bsdf,
+                    'incoming': m_bsdf
+                }
             },
             'light': {
                 'type': 'envmap',
@@ -146,9 +141,9 @@ class RendererMitsuba(Renderer):
         # update BSDF
         # https://mitsuba.readthedocs.io/en/stable/src/generated/plugins_bsdfs.html#smooth-diffuse-material-diffuse
         # RednerMat
-        params["mesh.bsdf.albedo.data"] = mi.TensorXf(diffuseTexture)
-        params["mesh.bsdf.specular.data"] = mi.TensorXf(specularTexture) 
-        params["mesh.bsdf.roughness.data"] = mi.TensorXf(roughnessTexture)
+        params["mesh.bsdf.albedo.data"] = mi.TensorXf(dr.clip(diffuseTexture, 0, 1))
+        params["mesh.bsdf.specular.data"] = mi.TensorXf(dr.clip(specularTexture, 0, 1)) 
+        params["mesh.bsdf.roughness.data"] = mi.TensorXf(dr.clip(roughnessTexture, 0.00001, 10.0))
         # principled
         # params["mesh.bsdf.base_color.data"] = mi.TensorXf(diffuseTexture)
         # params["mesh.bsdf.roughness.data"] = mi.TensorXf(roughnessTexture)
