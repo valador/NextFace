@@ -13,14 +13,18 @@ class RednerMat(mi.BSDF):
         self.albedo = props.get("albedo", mi.Texture.D65(0.1))
         self.roughness = props.get("roughness", mi.Texture.D65(0.1))
         self.specular = props.get("specular", mi.Texture.D65(0.1))
-    
+        
+        self.m_components += [mi.BSDFFlags.DiffuseReflection | mi.BSDFFlags.FrontSide]
+        self.m_components += [mi.BSDFFlags.GlossyReflection | mi.BSDFFlags.FrontSide]
+        self.m_flags = self.m_components[0] | self.m_components[1]
+        
     def roughness_to_phong(roughness: mi.Float) -> mi.Float:
         return dr.maximum(2.0 / roughness - 2, 0)
     
     def smithG1(roughness: mi.Float, v: mi.Vector3f) -> mi.Float:
         cos_theta = v.z
         # tan^2 + 1 = 1/cos^2
-        tan_theta = dr.safe_sqrt(1 / (cos_theta * cos_theta) - 1.0)
+        tan_theta = dr.safe_sqrt(dr.rcp(cos_theta * cos_theta) - 1.0)
         
         a =  dr.rcp(dr.sqrt(roughness) * tan_theta)
         result = dr.select(
@@ -30,8 +34,11 @@ class RednerMat(mi.BSDF):
         return dr.select(dr.eq(tan_theta,0.0), 1, result)
     
     def eval(self, ctx: mi.BSDFContext, si: mi.SurfaceInteraction3f, wo: mi.Vector3f, active: bool = True) -> mi.Color3f:
+        has_diffuse = ctx.is_enabled(mi.BSDFFlags.DiffuseReflection, 0)
+        has_specular = ctx.is_enabled(mi.BSDFFlags.GlossyReflection, 1)
+        
         # Calcul contribution diffuse
-        diffuse_contrib = self.albedo.eval(si, active) * dr.maximum(wo.z, 0.0) / mi.Float(math.pi)
+        diffuse_contrib = dr.select(has_diffuse, self.albedo.eval(si, active) * dr.maximum(wo.z, 0.0) / mi.Float(math.pi), 0.0)
         
         # Calcul contribution speculaire        
         m = dr.normalize(si.wi + wo)
@@ -43,17 +50,25 @@ class RednerMat(mi.BSDF):
         G = RednerMat.smithG1(roughness, si.wi) * RednerMat.smithG1(roughness, wo)
         F = specular_reflectance + (1 - specular_reflectance) * dr.power(dr.maximum(1 - dr.abs(dr.dot(m, wo)), 0), 5)
         specular_contrib = dr.select(wo.z > 0, F * D * G / (4.0 * si.wi.z), 0)
+        specular_contrib = dr.select(has_specular, specular_contrib, 0)
         
         return specular_contrib + diffuse_contrib
         
     
     def pdf(self, ctx: mi.BSDFContext, si: mi.SurfaceInteraction3f, wo: mi.Vector3f, active: bool = True) -> float:
+        has_diffuse = ctx.is_enabled(mi.BSDFFlags.DiffuseReflection, 0)
+        has_specular = ctx.is_enabled(mi.BSDFFlags.GlossyReflection, 1)
+        
         # Compute the probability of selecting the diffuse and specular lobe
         diffuse_pmf = mi.luminance(self.albedo.eval(si, active))
         specular_pmf = mi.luminance(self.specular.eval(si, active))
         weight_pmf = diffuse_pmf + specular_pmf
         diffuse_pmf = dr.select(weight_pmf > 0.0, diffuse_pmf / weight_pmf, 0.0)
         specular_pmf = dr.select(weight_pmf > 0.0, specular_pmf / weight_pmf, 0.0)
+        
+        if(dr.neq(has_diffuse, has_specular)):
+            diffuse_pmf = dr.select(has_diffuse, 1.0, 0.0)
+            specular_pmf = dr.select(has_diffuse, 0.0, 1.0)
         
         # Compute diffuse PDF
         diffuse_pdf = mi.warp.square_to_cosine_hemisphere_pdf(wo) * diffuse_pmf
@@ -72,12 +87,20 @@ class RednerMat(mi.BSDF):
         return self.eval(ctx, si, wo, active), self.pdf(ctx, si, wo, active)
     
     def sample(self, ctx: mi.BSDFContext, si: mi.SurfaceInteraction3f, sample1: mi.Float, sample2: mi.Point2f, active: bool = True) -> Tuple[mi.BSDFSample3f, mi.Color3f]:
+        has_diffuse = ctx.is_enabled(mi.BSDFFlags.DiffuseReflection, 0)
+        has_specular = ctx.is_enabled(mi.BSDFFlags.GlossyReflection, 1)
+        
         # Compute PDF selection
         diffuse_pmf = mi.luminance(self.albedo.eval(si, active))
         specular_pmf = mi.luminance(self.specular.eval(si, active))
         weight_pmf = diffuse_pmf + specular_pmf
         diffuse_pmf = dr.select(weight_pmf > 0.0, diffuse_pmf / weight_pmf, 0.0)
         specular_pmf = dr.select(weight_pmf > 0.0, specular_pmf / weight_pmf, 0.0)
+        
+        if(dr.neq(has_diffuse, has_specular)):
+            diffuse_pmf = dr.select(has_diffuse, 1.0, 0.0)
+            specular_pmf = dr.select(has_diffuse, 0.0, 1.0)
+             
         
         # Compute masks
         diffuse_mask = diffuse_pmf < sample1
@@ -88,21 +111,24 @@ class RednerMat(mi.BSDF):
         # Uses a lot of masks
         bs: mi.BSDFSample3f = dr.zeros(mi.BSDFSample3f)
         bs.eta = 1
-        bs.sampled_type = mi.BSDFFlags.GlossyReflection # Let's do not differentiate the two for the moment
-        bs.sampled_component = 0
+        
         
         #if dr.any(diffuse_mask):
         bs.wo[diffuse_mask] = mi.warp.square_to_cosine_hemisphere(sample2)
+        bs.sampled_type[diffuse_mask]  = +mi.BSDFFlags.DiffuseReflection
+        bs.sampled_component[diffuse_mask]  = 0
         
         roughness = dr.maximum(self.roughness.eval_1(si, active),0.00001)
         phong_exponent = RednerMat.roughness_to_phong(roughness)
         phi = 2.0 * math.pi * sample2[1]
         sin_phi = dr.sin(phi)
         cos_phi = dr.cos(phi)
-        cos_theta = dr.power(sample2[0], 1.0 / (phong_exponent + 2.0))
+        cos_theta = dr.power(sample2[0], dr.rcp(phong_exponent + 2.0))
         sin_theta = dr.safe_sqrt(1.0 - cos_theta * cos_theta)
         m = mi.Vector3f(sin_theta * cos_phi, sin_theta * sin_phi, cos_theta)
         bs.wo[specular_mask] = mi.reflect(si.wi, m)
+        bs.sampled_type[specular_mask]  = +mi.BSDFFlags.GlossyReflection
+        bs.sampled_component[specular_mask]  = 1
         
         # Compute PDF
         bs.pdf = self.pdf(ctx, si, bs.wo, active)

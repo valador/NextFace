@@ -2,7 +2,7 @@
     <default name="spp" value="128"/>
     <default name="res" value="256"/>
     <default name="max_depth" value="6"/>
-    <default name="integrator" value="prb"/>
+    <default name="integrator" value="prb_reparam"/>
 
     <integrator type='$integrator'>
         <integer name="max_depth" value="$max_depth"/>
