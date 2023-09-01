@@ -45,6 +45,7 @@ NextFace is a light-weight pytorch library for high-fidelity 3D face reconstruct
 * Activate the environment: conda activate nextFace
 * Download basel face model from [here](https://faces.dmi.unibas.ch/bfm/bfm2017.html), just fill the form and you will receive an instant direct download link into your inbox. Downloaded  **model2017-1_face12_nomouth.h5 file** and put it inside **./baselMorphableModel** directory
 * Download the albedo face model **albedoModel2020_face12_albedoPart.h5** from [here](https://github.com/waps101/AlbedoMM/releases/download/v1.0/albedoModel2020_face12_albedoPart.h5) and put it inside **./baselMorphableModel** directory
+* Make sure to use a default morphable model in rendererMitsuba to create an initial scene. The mesh will be modified at runtime
 
 # How to use
 
