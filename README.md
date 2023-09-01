@@ -87,6 +87,12 @@ The optimization takes 4~5 minutes depending on your gpu performance. The output
 * specularMap_{imageIndex}.png: the estimated specular map in uv space
 * roughnessMap_{imageIndex}.png: the estimated roughness map in uv space
 * mesh{imageIndex}.obj: an obj file that contains the 3D mesh of the reconstructed face
+* If the debug options are used :
+  * in the debug/mesh folder : the mesh at {renderer}_{step} _{iteration}.obj
+  * in the debug/results folder : render, input, difference, diffuse, specular and roughness maps (the order from left to right)
+  * in outputStage1 folder : the render after step 1
+  * in outputStage2 folder : the render after step 2
+  * in the checkpoints folder : the loss graphs and the architecture parameters in pickle format
 
 # How it works
 
@@ -117,8 +123,6 @@ NextFace reprocudes the optimization strategy of our [early work](https://arxiv.
 * Using a single image to estimate face attribute is an ill-posed problem and the estimated reflectance maps(diffuse, specular and roughness) are view/camera dependent. To obtain intrinsic reflectance maps, you have to use multiple images per subject.
 * When using mitsuba in the command line, you might receive leak variables. This is a known issue and the team at drjit is on it. The Python shutdown sequence is rather complex and some Dr.Jit variables get freed in an undesired order, hence the warning message (It only happens in the Python script and not in the notebook as the notebook's kernel keeps running even once you've executed all cells.). It shouldn't impact the optimisation process for individual images and for our approach for batch optimisation.
 * If your kernel is crashing for no reasons, it might be an overflow issue. Try reducing the number of samples or reducing the amount of debugs.
-
-
 
 # Roadmap
 
