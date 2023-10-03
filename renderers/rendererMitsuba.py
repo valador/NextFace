@@ -51,6 +51,12 @@ class RendererMitsuba(Renderer):
                         
                     }
                 })
+        m_bsdf_cv = {
+            'type': 'twostate',
+            'old': m_bsdf,
+            'new': m_bsdf,
+            'incoming': m_bsdf
+        }
         # Create scene
         self.scene = mi.load_dict({
             'type': 'scene',
@@ -59,6 +65,9 @@ class RendererMitsuba(Renderer):
                 'aovs':'dd.y:depth',
                 'my_image':{
                     'type':'direct_reparam'
+                    #cv
+                    # 'type':'twostateprbpath',
+                    # 'max_depth' : 2 # in examples they have 16
                 }
             },
             'sensor':  {
@@ -71,9 +80,9 @@ class RendererMitsuba(Renderer):
                         ),
                 'film': {
                     'type': 'hdrfilm',
-                    'filter':{
-                        'type':'box'
-                    },
+                    # 'filter':{
+                    #     'type':'box'
+                    # },
                     'width':  self.screenWidth,
                     'height': self.screenHeight,
                     'pixel_format':'rgba',
@@ -84,7 +93,7 @@ class RendererMitsuba(Renderer):
                 "type": "obj",
                 "filename": "./output/mitsuba_default/mesh0.obj",
                 "face_normals": True,
-                'bsdf': m_bsdf
+                'bsdf': m_bsdf #or m_bsdf_cv
             },
             'light': {
                 'type': 'envmap',
