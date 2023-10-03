@@ -54,6 +54,8 @@ class Optimizer:
 
         dict = {
             'vShapeCoeff': self.pipeline.vShapeCoeff.detach().cpu().numpy(),
+            'vEyeCoeff': self.pipeline.vEyeCoeff.detach().cpu().numpy(),
+            'vNeckCoeff': self.pipeline.vNeckCoeff.detach().cpu().numpy(),
             'vAlbedoCoeff': self.pipeline.vAlbedoCoeff.detach().cpu().numpy(),
             'vExpCoeff': self.pipeline.vExpCoeff.detach().cpu().numpy(),
             'vRotation': self.pipeline.vRotation.detach().cpu().numpy(),
@@ -81,6 +83,8 @@ class Optimizer:
         assert handle is not None
         dict = pickle.load(handle)
         self.pipeline.vShapeCoeff = torch.tensor(dict['vShapeCoeff']).to(self.device)
+        self.pipeline.vEyeCoeff = torch.tensor(dict['vEyeCoeff']).to(self.device)
+        self.pipeline.vNeckCoeff = torch.tensor(dict['vNeckCoeff']).to(self.device)
         self.pipeline.vAlbedoCoeff = torch.tensor(dict['vAlbedoCoeff']).to(self.device)
         self.pipeline.vExpCoeff = torch.tensor(dict['vExpCoeff']).to(self.device)
         self.pipeline.vRotation = torch.tensor(dict['vRotation']).to(self.device)
@@ -105,6 +109,8 @@ class Optimizer:
 
     def enableGrad(self):
         self.pipeline.vShapeCoeff.requires_grad = True
+        self.pipeline.vEyeCoeff.requires_grad = True
+        self.pipeline.vNeckCoeff.requires_grad = True
         self.pipeline.vAlbedoCoeff.requires_grad = True
         self.pipeline.vExpCoeff.requires_grad = True
         self.pipeline.vRotation.requires_grad = True
@@ -205,6 +211,8 @@ class Optimizer:
             {'params': self.pipeline.vRotation, 'lr': 0.02},
             {'params': self.pipeline.vTranslation, 'lr': 0.02},
             {'params': self.pipeline.vExpCoeff, 'lr': 0.02},
+            {'params': self.pipeline.vEyeCoeff, 'lr':0.01},
+            {'params': self.pipeline.vNeckCoeff, 'lr':0.01},
             #{'params': self.pipeline.vShapeCoeff, 'lr': 0.02}
         ]
 
@@ -256,6 +264,9 @@ class Optimizer:
             if iter == 100:
                 optimizer.add_param_group({'params': self.pipeline.vShapeCoeff, 'lr': 0.01})
                 optimizer.add_param_group({'params': self.pipeline.vExpCoeff, 'lr': 0.01})
+                optimizer.add_param_group({'params': self.pipeline.vEyeCoeff, 'lr': 0.01})
+                optimizer.add_param_group({'params': self.pipeline.vNeckCoeff, 'lr': 0.01})
+
                 optimizer.add_param_group({'params': self.pipeline.vRotation, 'lr': 0.0001})
                 optimizer.add_param_group({'params': self.pipeline.vTranslation, 'lr': 0.0001})
 

@@ -1,6 +1,7 @@
 from renderers.renderer import *
 from sphericalharmonics import SphericalHarmonics
 from morphablemodel import MorphableModel
+from flameMorphableModel import FlameMorphableModel
 from camera import Camera
 from utils import *
 
@@ -23,12 +24,18 @@ class Pipeline:
         else:
             raise ValueError(f'lamdmarksDetectorType must be one of [mediapipe, fan] but was {self.config.lamdmarksDetectorType}')
 
-        self.morphableModel = MorphableModel(path = config.path,
-                                             textureResolution= config.textureResolution,
-                                             trimPca= config.trimPca,
-                                             landmarksPathName=pathLandmarksAssociation,
-                                             device = self.device
-                                             )
+        # self.morphableModel = MorphableModel(path = config.path,
+        #                                      textureResolution= config.textureResolution,
+        #                                      trimPca= config.trimPca,
+        #                                      landmarksPathName=pathLandmarksAssociation,
+        #                                      device = self.device
+        #                                      )
+        self.morphableModel = FlameMorphableModel(path = config.path,
+                                                textureResolution= config.textureResolution,
+                                                trimPca= config.trimPca,
+                                                landmarksPathName=pathLandmarksAssociation,
+                                                device = self.device
+                                                )
         self.renderer = self.reloadRenderer(rendererName) 
         self.uvMap = self.morphableModel.uvMap.clone()
         self.uvMap[:, 1] = 1.0 - self.uvMap[:, 1]
@@ -50,9 +57,11 @@ class Pipeline:
         self.sharedIdentity = sharedIdentity
         nShape = 1 if sharedIdentity == True else n
 
-        self.vShapeCoeff = torch.zeros([nShape, self.morphableModel.shapeBasisSize], dtype = torch.float32, device = self.device)
+        self.vShapeCoeff = torch.zeros([nShape, self.morphableModel.shapeBasisSize], dtype=torch.float32, device=self.device)
         self.vAlbedoCoeff = torch.zeros([nShape, self.morphableModel.albedoBasisSize], dtype=torch.float32, device=self.device)
-
+        self.vEyeCoeff = torch.zeros([nShape, self.morphableModel.eyePoseBasisSize], dtype=torch.float32, device=self.device)
+        self.vNeckCoeff = torch.zeros([nShape, self.morphableModel.neckPoseBasisSize], dtype=torch.float32, device=self.device)
+        
         self.vExpCoeff = torch.zeros([n, self.morphableModel.expBasisSize], dtype=torch.float32, device=self.device)
         self.vRotation = torch.zeros([n, 3], dtype=torch.float32, device=self.device)
         self.vTranslation = torch.zeros([n, 3], dtype=torch.float32, device=self.device)
