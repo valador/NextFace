@@ -68,7 +68,8 @@ class MorphableModel:
             assert(self.file is not None)
 
             self.diffuseAlbedoMean = torch.Tensor(self.file["diffuseAlbedo"]["model"]["mean"]).reshape(-1, 3).to(device).float()
-            self.diffuseAlbedoPca = torch.Tensor(self.file["diffuseAlbedo"]["model"]["pcaBasis"]).reshape(-1, 3, self.albedoBasisSize).to(device).float().permute(2, 0, 1)
+            pca_basis = np.array(self.file["diffuseAlbedo"]["model"]["pcaBasis"])
+            self.diffuseAlbedoPca = torch.from_numpy(pca_basis).reshape(-1, 3, self.albedoBasisSize).to(device).float().permute(2, 0, 1)
             self.diffuseAlbedoPcaVar = torch.Tensor(self.file["diffuseAlbedo"]["model"]["pcaVariance"]).reshape(self.albedoBasisSize).to(device).float()
 
             self.specularAlbedoMean = torch.Tensor(self.file["specularAlbedo"]["model"]["mean"]).reshape(-1, 3).to(device).float()
