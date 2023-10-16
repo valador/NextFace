@@ -48,12 +48,12 @@ class LandmarksDetectorMediapipe:
 		assert(images.dim() == 4)
 		landmarks = []
 		for i in range(len(images)):
-			with torch.no_grad():  # Use torch.no_grad() to disable gradient calculation
-				land = self._detect((images[i].detach().cpu().numpy() * 255.0).astype('uint8'))
+			land = self._detect((images[i].detach().cpu().numpy() * 255.0).astype('uint8'))
 			landmarks.append(land)
 
-		landmarks_array = np.array(landmarks)  # Convert the list of numpy arrays to a single numpy array
-		return torch.tensor(landmarks_array, device=self.device)
+		torch.set_grad_enabled(True) #it turns out that the landmark detector disables the autograd engine. this line fixes this
+		landmarks = np.array(landmarks)
+		return torch.tensor(landmarks, device = self.device)
 
 	def _detect(self, image):
 
