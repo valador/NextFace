@@ -80,8 +80,7 @@ def estimateCameraPosition(focalLength, image_center, landmarks, vertices, rotAn
                               translation[i])
         rots.append(rot)
         transs.append(trans)
-    return torch.tensor(rots, device=vertices.device, dtype=torch.float32), torch.tensor(transs, device=vertices.device,
-                                                                                         dtype=torch.float32)
+    return torch.tensor(np.array(rots), device=vertices.device, dtype=torch.float32), torch.tensor(np.array(transs), device=vertices.device, dtype=torch.float32)
 
 
 def solvePnP(focalLength, imageCenter, vertices, pixels, rotAngles, translation):
