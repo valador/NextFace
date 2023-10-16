@@ -53,8 +53,8 @@ class MorphableModel:
             self.shapePcaVar = torch.Tensor(self.file["shape"]["model"]["pcaVariance"]).reshape(self.shapeBasisSize).to(device).float()
 
             print("loading expression basis...")
-            pca_basis = np.array(self.file["expression"]["model"]["pcaBasis"])
-            self.expressionPca = torch.from_numpy(pca_basis).reshape(-1, 3, self.expBasisSize).to(device).float().permute(2, 0, 1)
+            pca_basis1 = np.array(self.file["expression"]["model"]["pcaBasis"])
+            self.expressionPca = torch.from_numpy(pca_basis1).reshape(-1, 3, self.expBasisSize).to(device).float().permute(2, 0, 1)
             self.expressionPcaVar = torch.Tensor(self.file["expression"]["model"]["pcaVariance"]).reshape(self.expBasisSize).to(device).float()
             self.faces = torch.Tensor(np.transpose(self.file["shape"]["representer"]["cells"])).reshape(-1, 3).to(device).long()
             self.file.close()
@@ -68,12 +68,13 @@ class MorphableModel:
             assert(self.file is not None)
 
             self.diffuseAlbedoMean = torch.Tensor(self.file["diffuseAlbedo"]["model"]["mean"]).reshape(-1, 3).to(device).float()
-            pca_basis = np.array(self.file["diffuseAlbedo"]["model"]["pcaBasis"])
-            self.diffuseAlbedoPca = torch.from_numpy(pca_basis).reshape(-1, 3, self.albedoBasisSize).to(device).float().permute(2, 0, 1)
+            pca_basis2 = np.array(self.file["diffuseAlbedo"]["model"]["pcaBasis"])
+            self.diffuseAlbedoPca = torch.from_numpy(pca_basis2).reshape(-1, 3, self.albedoBasisSize).to(device).float().permute(2, 0, 1)
             self.diffuseAlbedoPcaVar = torch.Tensor(self.file["diffuseAlbedo"]["model"]["pcaVariance"]).reshape(self.albedoBasisSize).to(device).float()
 
             self.specularAlbedoMean = torch.Tensor(self.file["specularAlbedo"]["model"]["mean"]).reshape(-1, 3).to(device).float()
-            self.specularAlbedoPca = torch.Tensor(self.file["specularAlbedo"]["model"]["pcaBasis"]).reshape(-1, 3, self.albedoBasisSize).to(device).float().permute(2, 0, 1)
+            pca_basis3 = np.array(self.file["specularAlbedo"]["model"]["pcaBasis"])
+            self.specularAlbedoPca = torch.from_numpy(pca_basis3).reshape(-1, 3, self.albedoBasisSize).to(device).float().permute(2, 0, 1)
             self.specularAlbedoPcaVar = torch.Tensor(self.file["specularAlbedo"]["model"]["pcaVariance"]).reshape(self.albedoBasisSize).to(device).float()
             self.file.close()
 
