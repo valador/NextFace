@@ -48,7 +48,8 @@ class MorphableModel:
 
             print("loading shape basis...")
             self.shapeMean = torch.Tensor(self.file["shape"]["model"]["mean"]).reshape(-1, 3).to(device).float()
-            self.shapePca = torch.Tensor(self.file["shape"]["model"]["pcaBasis"]).reshape(-1, 3, self.shapeBasisSize).to(device).float().permute(2, 0, 1)
+            shapePcaArray = np.array(self.file["shape"]["model"]["pcaBasis"])
+            self.shapePca = torch.from_numpy(shapePcaArray).reshape(-1, 3, self.shapeBasisSize).to(device).float().permute(2, 0, 1)
             self.shapePcaVar = torch.Tensor(self.file["shape"]["model"]["pcaVariance"]).reshape(self.shapeBasisSize).to(device).float()
 
             print("loading expression basis...")
